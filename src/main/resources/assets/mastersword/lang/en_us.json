@@ -1,3 +1,4 @@
 {
-	"item.mastersword.master_sword": "The Master Sword"
+	"item.mastersword.master_sword": "The Master Sword",
+	"commands.mastersword.reload.success": "The Master Sword config reloaded (durability: %s)."
 }

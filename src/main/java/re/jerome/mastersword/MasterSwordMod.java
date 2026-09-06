@@ -4,6 +4,8 @@ import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import re.jerome.mastersword.command.MasterSwordCommand;
+import re.jerome.mastersword.config.MasterSwordConfig;
 import re.jerome.mastersword.registry.ModItems;
 
 public class MasterSwordMod implements ModInitializer {
@@ -17,7 +19,12 @@ public class MasterSwordMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		// The order matters: touching ModItems runs its class initialiser, which
+		// registers the sword with the attack and repair values read from the
+		// config, so the config has to be loaded first.
+		MasterSwordConfig.load();
 		ModItems.register();
+		MasterSwordCommand.register();
 		LOGGER.info("The Master Sword is waiting in the dark forest.");
 	}
 }

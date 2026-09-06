@@ -1,3 +1,4 @@
 {
-	"item.mastersword.master_sword": "L'Épée de Légende"
+	"item.mastersword.master_sword": "L'Épée de Légende",
+	"commands.mastersword.reload.success": "Configuration de L'Épée de Légende rechargée (durabilité : %s)."
 }

@@ -137,11 +137,19 @@ régénération (§2.3) doit être recombiné. On garde le **plus récent** des 
 « derniers coups portés » — le choix conservateur, sinon fusionner une épée
 fraîchement utilisée avec une épée au repos effacerait la pénalité.
 
-⚠️ Ça ne tombera **pas** tout seul : `AnvilMenu.createResult()` fait
-`ItemStack result = input.copy()` puis ne fusionne explicitement que les dégâts
-et les enchantements. **Tous les autres composants de l'item de droite sont
-silencieusement perdus.** Il faudra donc un mixin sur `createResult` — c'est du
-code en plus, à prévoir dans l'étape 4.
+⚠️ Ça ne tombera **pas** tout seul, et il y a **trois** chemins à traiter, pas
+un seul :
+
+| Chemin | Ce qu'il fait de la pile | Composants custom |
+| --- | --- | --- |
+| `AnvilMenu.createResult` | `input.copy()` | ceux de gauche gardés, ceux de droite perdus |
+| `GrindstoneMenu.mergeItems` | `input.copyWithCount(n)` | idem |
+| `RepairItemRecipe.assemble` | `new ItemStack(first.getItem())` | **tous perdus**, pile neuve |
+
+Le composant de régénération devra donc être recombiné aux trois endroits, ou
+bien on accepte explicitement qu'une réparation à la meule ou au craft remette le
+compteur à neuf — ce qui se défend, puisque ces deux-là effacent déjà les
+enchantements. À trancher à l'étape 4.
 
 ### 2.3 Régénération de durabilité ✅
 
@@ -450,36 +458,78 @@ alors le monde, pas le bloc (§5).
 Un fichier de configuration permet d'ajuster les stats, les zones de spawn, le
 brouillard, etc.
 
-🔷 Proposition :
+**Posé à l'étape 3.**
 
-- **`config/mastersword.json`**, écrit à la main via un `Codec`, sans
-  dépendance externe (ni Cloth Config, ni owo, ni MidnightLib) : une dépendance
-  de plus à vérifier et à faire suivre à chaque version de Minecraft, pour un
-  fichier plat d'une trentaine de valeurs.
-- Généré avec ses valeurs par défaut et des commentaires au premier lancement.
-- Rechargeable par commande `/mastersword reload` (permission opérateur), pour
-  ce qui peut l'être — voir les limites ci-dessous.
+- **`config/mastersword.json`**, lu par un `Codec` + `JsonOps`, sans dépendance
+  externe (ni Cloth Config, ni owo, ni MidnightLib) : une dépendance de plus à
+  faire suivre à chaque version de Minecraft, pour un fichier plat d'une
+  trentaine de valeurs. Le `Codec` plutôt que du Gson brut parce qu'il distingue
+  **clé absente** de **valeur à zéro**, ce qu'un champ primitif Gson ne permet
+  pas.
+- Généré avec ses valeurs par défaut au premier lancement, et réécrit normalisé
+  à chaque chargement (les clés manquantes réapparaissent).
+- Rechargeable par `/mastersword reload`, pour ce qui peut l'être — voir les
+  limites ci-dessous.
+
+⚠️ **Deux codecs, construits depuis la même liste de champs.** À l'encodage,
+`optionalFieldOf(nom, défaut)` **omet** la clé quand la valeur égale le défaut :
+le premier fichier généré ne contenait que son commentaire, sans une seule clé à
+éditer. La lecture utilise donc `optionalFieldOf` (un fichier partiel se charge),
+l'écriture `fieldOf` (tout est écrit). Un booléen bascule entre les deux.
+
+⚠️ **`intRange` et `floatRange` rejettent** une valeur hors bornes, ils ne la
+ramènent pas dans l'intervalle. Mais le repli est plus fin que « tout aux
+défauts » : `optionalFieldOf` renvoie une erreur **accompagnée d'un partiel**, et
+`resultOrPartial` le récupère. Mesuré sur
+`{"attack_damage": 12.0, "max_durability": -5, "unbreakable": true}` → seul
+`max_durability` retombe à 2031, les deux autres valeurs sont conservées, et
+l'avertissement nomme la clé fautive. Jamais un crash, et jamais une valeur
+aberrante qui atteindrait le jeu.
+
+`attack_speed` est borné à **-3.9** et non -4.0 : -4.0 annulerait exactement
+l'attribut `ATTACK_SPEED`, la barre d'attaque ne se remplirait plus jamais et
+l'attaque chargée de §3 deviendrait inatteignable.
+
+⚠️ **JSON n'accepte pas de commentaires.** Le fichier porte un tableau
+`"_comment"` en tête, écrit à chaque sauvegarde et ignoré à la lecture, qui dit
+lui-même quelles clés se rechargent à chaud.
 
 Découpage prévu :
 
 | Section | Contenu |
 | --- | --- |
-| `item` | dégâts, vitesse d'attaque, durabilité max, durée de régénération complète (ticks), réparation activée |
+| `item` ✔ | `attack_damage`, `attack_speed`, `max_durability`, `unbreakable`, `repairable_with_netherite_ingot` ; la durée de régénération arrivera à l'étape 4 |
 | `light_wave` | activée, cooldown, portée, vitesse, ratio de dégâts, largeur, coût en durabilité |
 | `structure` | activée, `spacing`, `separation`, distance minimale aux autres structures (120), biome cible |
 | `fog` | activé, rayon extérieur (50), rayon de densité maximale (10), couleur, intensité maximale |
 
 **Trois limites à connaître avant de promettre « tout est configurable à
-chaud »** — à confirmer par sous-agent, mais elles sont documentées dans
-`../SETUP-MC-MODDING.md` §8 :
+chaud »**, les deux premières désormais vérifiées et traitées :
 
-1. **La durabilité max est un composant de données** (`DataComponents.MAX_DAMAGE`),
-   figé sur la pile au moment de sa création. Une valeur de config ne la suit pas
-   à chaud sans mixin sur `ItemStack#getMaxDamage()`. 🔷 On accepte le mixin :
-   c'est justement le genre de valeur qu'on veut pouvoir régler.
-2. **Les attributs** (dégâts, vitesse) sont posés à l'enregistrement de l'item,
-   donc lus une fois au démarrage. 🔷 Modifiables par config, appliqués au
-   **redémarrage** — pas de `/reload`.
+1. ✔ **La durabilité max est un composant de données** (`DataComponents.MAX_DAMAGE`),
+   figé sur la pile à sa création. `ItemStackMixin` intercepte donc
+   `ItemStack.getMaxDamage()I` en `HEAD` — c'est le **seul** point à couvrir :
+   `getDamageValue`, `isBarVisible`, `getBarWidth` et `getBarColor` passent
+   toutes par lui. `unbreakable` intercepte en plus `isDamageableItem()Z` pour
+   faire disparaître la barre.
+   ⚠️ **Baisser `max_durability` sous les dégâts déjà encaissés détruit l'épée
+   au coup suivant.** `getDamageValue()` fait `clamp(stocké, 0, getMaxDamage())` :
+   avec 1500 de dégâts stockés et `max_durability` ramené à 100, il renvoie
+   **100**, donc `dégâts == max` — l'épée paraît **entièrement cassée**. Tant que
+   rien n'écrit, remonter la valeur restaure tout, la lecture seule est
+   réversible. Mais le premier `setDamageValue` — un coup porté, Mending,
+   l'enclume, la meule — grave la valeur écrêtée, et `isBroken()` fait
+   disparaître l'épée. Le fichier de config le dit lui-même dans son
+   `_comment`.
+   ⚠️ `unbreakable: true` **empêche de fusionner deux épées** : `AnvilMenu` et
+   `GrindstoneMenu` refusent un item qui se déclare non endommageable. La
+   réparation par combinaison de §2.2 et le cumul d'enchantements par fusion
+   deviennent donc impossibles tant que l'option est active.
+2. ✔ **Les attributs** (dégâts, vitesse) et le composant `REPAIRABLE` sont posés
+   à l'enregistrement de l'item, donc lus une seule fois au démarrage.
+   Modifiables par config, appliqués au **redémarrage** — pas par `/reload`.
+   C'est pourquoi `MasterSwordConfig.load()` doit précéder `ModItems.register()`
+   dans `onInitialize`.
 3. **La worldgen est data-driven** : `spacing` / `separation` sont lus dans le
    JSON au chargement du monde. Les rendre configurables suppose soit un
    `StructurePlacement` custom qui lit la config (cohérent avec ce que demande
@@ -489,7 +539,16 @@ chaud »** — à confirmer par sous-agent, mais elles sont documentées dans
 
 🔷 Portée serveur / client : `item`, `light_wave` et `structure` font autorité
 côté serveur ; `fog` est purement client (chacun règle sa lisibilité). En
-multijoueur, le client n'impose rien sur le gameplay.
+multijoueur, le client n'impose rien sur le **gameplay**.
+
+⚠️ **Mais pas sur l'affichage.** `onInitialize` tourne aussi côté client, donc
+chaque client charge *son* `mastersword.json`, et `/mastersword reload` ne
+recharge que le serveur. La barre de durabilité étant dessinée à partir du
+`max_durability` **du client**, un client mal réglé affiche une barre fausse — et
+un `unbreakable: true` local masquerait la barre pendant que le serveur continue
+d'user l'épée. Les dégâts réels restent serveur : c'est un décalage d'affichage,
+pas une triche. À régler quand un paquet de synchronisation existera — l'étape 9
+en aura un de toute façon pour le brouillard.
 
 ---
 
@@ -547,14 +606,16 @@ classes `Fabric-Loom-Client-Only-Entries` dans le jar.
 ```
 src/main/java/re/jerome/mastersword/
 ├─ MasterSwordMod            point d'entrée commun (ModInitializer) ✔ créé
-├─ config/                   MasterSwordConfig (Codec), chargement, /reload
-├─ registry/                 ModItems, ModBlocks, ModBlockEntities,
-│                            ModEntities, ModComponents, ModParticles
-├─ item/MasterSwordItem
+├─ config/MasterSwordConfig  Codec, chargement, sauvegarde normalisée ✔ créé
+├─ command/MasterSwordCommand  /mastersword reload ✔ créé
+├─ registry/                 ModItems ✔, ModItemIds ✔, puis ModBlocks,
+│                            ModBlockEntities, ModEntities, ModComponents
+├─ item/MasterSwordItem      ✔ créé (encore vide, rempli aux étapes 4 et 6)
 ├─ block/PedestalBlock, PedestalBlockEntity
 ├─ entity/LightWaveEntity
 ├─ worldgen/                 StructurePlacement custom (le reste en JSON data/)
-└─ mixin/                    exclusivité d'enchantements, getMaxDamage
+└─ mixin/ItemStackMixin      ✔ durabilité configurable ; l'exclusivité
+                             d'enchantements viendra à l'étape 5
 
 src/client/java/re/jerome/mastersword/client/
 ├─ MasterSwordClient         point d'entrée client (ClientModInitializer) ✔ créé
@@ -616,7 +677,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | --- | --- | --- | --- |
 | 1 | Squelette | wrapper Gradle copié, `fabric.mod.json`, `LICENSE` MIT, `.gitattributes`, build vide qui se lance | **fait** 06/09/2026 |
 | 2 | L'item nu | épée aux stats netherite, texture, modèle, réparation par combinaison vérifiée | **fait** 06/09/2026 |
-| 3 | Config | fichier JSON, `Codec`, chargement, `/mastersword reload`, mixin `getMaxDamage` | à faire |
+| 3 | Config | fichier JSON, `Codec`, chargement, `/mastersword reload`, mixin `getMaxDamage` | **fait** 06/09/2026 |
 | 4 | Régénération | composant custom, décompte du temps de monde, remise à zéro au combat, fusion à l'enclume | à faire |
 | 5 | Enchantements | mixin d'exclusivité, test Sharpness + Smite | à faire |
 | 6 | Vague de lumière | entité, rendu, dégâts, cooldown 15 s, équilibrage | à faire |
@@ -645,6 +706,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | Date | Décision |
 | --- | --- |
 | 06/09/2026 | Spécification initiale rédigée. `CLAUDE.md` allégé : les specs vivent ici. |
+| 06/09/2026 | **Étape 3 faite.** `config/mastersword.json` lu par `Codec` + `JsonOps`, section `item` seulement — une clé qui ne fait rien est pire qu'une clé absente, les autres sections viendront avec leurs étapes. `/mastersword reload` via `CommandRegistrationCallback`. `ItemStackMixin` sur `getMaxDamage()I` et `isDamageableItem()Z`. `MasterSwordItem` créée dès maintenant pour que le mixin teste un `instanceof` sans réveiller le `<clinit>` de `ModItems`. Deux pièges rencontrés : `optionalFieldOf` omet les valeurs par défaut à l'encodage (d'où deux codecs), et `CommandSourceStack.hasPermission(int)` n'existe plus en 26.2. |
 | 06/09/2026 | Texture repassée en **64×64** d'après le proto de Jérôme (garde ailée, losanges dorés, manche tressé), redressée à 45° parce que `handheld` ajoute 55°. Jérôme reprend la texture définitive de son côté ; le contrat de remplacement est en §2.1. Question ouverte n° 1 (textures) fermée. |
 | 06/09/2026 | **Étape 2 faite.** Item `mastersword:master_sword` enregistré, stats netherite via `Properties.sword(...)`, rareté EPIC, texture 16×16 dessinée, traductions fr/en, injection dans l'onglet créatif **Combat** juste après l'épée en netherite (`CreativeModeTabEvents.modifyOutputEvent`, et non `ItemGroupEvents` qui n'existe pas en 26.2). Réparation par matériau neutralisée par un `Repairable(HolderSet.empty())` — voir §2.2, `sword()` la posait d'office. Testé en jeu : onglet, enclume, meule, table de craft. **Correctif après relecture** : l'épée n'était dans aucun tag, donc n'acceptait aucun enchantement et perdait l'attaque tournoyante — ajout à `#minecraft:swords`, voir §2.4. Enchantements et sweep confirmés en jeu ensuite. |
 | 06/09/2026 | **Étape 1 faite.** Squelette Fabric 26.2 qui build (`BUILD SUCCESSFUL`, `mastersword-0.1.0.jar`). Package `re.jerome.mastersword` et `group=re.jerome`, alignés sur Argilus. Source sets séparés `src/main` / `src/client`. Versions revérifiées à la source : loader **0.19.5**, fabric-api **0.159.0+26.2**, loom 1.17.19. Licence MIT `Copyright (c) 2026 Jerome`. Dépôt git local initialisé, sans remote. |
