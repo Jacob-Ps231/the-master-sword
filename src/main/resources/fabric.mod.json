@@ -1,0 +1,26 @@
+{
+	"schemaVersion": 1,
+	"id": "mastersword",
+	"version": "${version}",
+	"name": "The Master Sword",
+	"description": "A legendary sword waits in a pedestal deep in the dark forest, guarded by a fog that thickens as you approach. Pull it out and the fog is gone for good.",
+	"authors": [
+		"Jerome"
+	],
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"re.jerome.mastersword.MasterSwordMod"
+		],
+		"client": [
+			"re.jerome.mastersword.client.MasterSwordClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
