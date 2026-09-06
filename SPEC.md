@@ -56,6 +56,29 @@ Ajouts propres au mod : rareté `EPIC` (nom violet) et `fireResistant()` — com
 l'épée en netherite vanilla, qui a déjà cette dernière. Pas d'empilement, posé
 d'office par `durability(...)`.
 
+#### La texture — contrat à respecter
+
+**Jérôme dessine la version définitive.** Celle en place est la mienne, tirée de
+son proto ; elle tient le rôle en attendant. Pour la remplacer, il suffit
+d'écraser le fichier — aucun code ni JSON à toucher.
+
+| Contrainte | Valeur |
+| --- | --- |
+| Chemin | `src/main/resources/assets/mastersword/textures/item/master_sword.png` |
+| Taille | 64×64 (carré ; 16×16 ou 32×32 marchent aussi) |
+| Format | PNG RGBA, fond transparent |
+| **Orientation** | **diagonale, pointe en haut à droite** |
+
+L'orientation n'est pas une préférence : `minecraft:item/handheld` ajoute une
+rotation Z de **55°** en `thirdperson_righthand` et **25°** en
+`firstperson_righthand`. Les sprites vanilla sont dessinées à ~45°, et c'est la
+somme qui donne une épée bien tenue. Une sprite verticale finit vers 145°,
+pointée par-dessus l'épaule — il faudrait alors un modèle custom avec ses
+propres `display`, au lieu d'hériter de `handheld`.
+
+À savoir : 64×64 est quatre fois la résolution des items vanilla, donc l'épée
+paraît plus finement détaillée que ses voisines dans l'inventaire.
+
 ### 2.2 Réparation ✅
 
 - **Autorisée** par combinaison de **deux Master Swords** : enclume, table de
@@ -611,10 +634,9 @@ brancher après coup obligerait à repasser sur chaque fichier.
 
 | # | Question | Impact |
 | --- | --- | --- |
-| 1 | Textures faites main, ou placeholders en attendant ? | étape 2 |
-| 2 | Une vague de lumière qui touche une cible remet-elle le compteur de régénération à zéro ? 🔷 oui | §2.3 |
-| 3 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
-| 4 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
+| 1 | Une vague de lumière qui touche une cible remet-elle le compteur de régénération à zéro ? 🔷 oui | §2.3 |
+| 2 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
+| 3 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
 
 ---
 
@@ -623,6 +645,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | Date | Décision |
 | --- | --- |
 | 06/09/2026 | Spécification initiale rédigée. `CLAUDE.md` allégé : les specs vivent ici. |
+| 06/09/2026 | Texture repassée en **64×64** d'après le proto de Jérôme (garde ailée, losanges dorés, manche tressé), redressée à 45° parce que `handheld` ajoute 55°. Jérôme reprend la texture définitive de son côté ; le contrat de remplacement est en §2.1. Question ouverte n° 1 (textures) fermée. |
 | 06/09/2026 | **Étape 2 faite.** Item `mastersword:master_sword` enregistré, stats netherite via `Properties.sword(...)`, rareté EPIC, texture 16×16 dessinée, traductions fr/en, injection dans l'onglet créatif **Combat** juste après l'épée en netherite (`CreativeModeTabEvents.modifyOutputEvent`, et non `ItemGroupEvents` qui n'existe pas en 26.2). Réparation par matériau neutralisée par un `Repairable(HolderSet.empty())` — voir §2.2, `sword()` la posait d'office. Testé en jeu : onglet, enclume, meule, table de craft. **Correctif après relecture** : l'épée n'était dans aucun tag, donc n'acceptait aucun enchantement et perdait l'attaque tournoyante — ajout à `#minecraft:swords`, voir §2.4. Enchantements et sweep confirmés en jeu ensuite. |
 | 06/09/2026 | **Étape 1 faite.** Squelette Fabric 26.2 qui build (`BUILD SUCCESSFUL`, `mastersword-0.1.0.jar`). Package `re.jerome.mastersword` et `group=re.jerome`, alignés sur Argilus. Source sets séparés `src/main` / `src/client`. Versions revérifiées à la source : loader **0.19.5**, fabric-api **0.159.0+26.2**, loom 1.17.19. Licence MIT `Copyright (c) 2026 Jerome`. Dépôt git local initialisé, sans remote. |
 | 06/09/2026 | `spacing` fixé à **72** et non 80 : à `spacing` égal, nos cellules s'alignent sur celles du manoir et `triangular` corrèle les deux tirages, ce qui ferait annuler l'épée par l'exclusion précisément dans les forêts à manoir. Confirmé au passage que l'exclusion est à sens unique et qu'aucun manoir n'est perdu. |
