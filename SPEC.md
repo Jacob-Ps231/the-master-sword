@@ -36,15 +36,25 @@ aucun asset, on reproduit l'idée.
 
 Identiques à l'épée en netherite.
 
-| Propriété | Valeur | Source |
-| --- | --- | --- |
-| Dégâts d'attaque | ceux de `NETHERITE_SWORD` | à recopier depuis vanilla, jamais de mémoire |
-| Vitesse d'attaque | idem | idem |
-| Durabilité max | idem (2031 en 1.x — **à vérifier en 26.2**) | `DataComponents.MAX_DAMAGE` |
-| Tier / niveau d'outil | netherite | `ToolMaterial` |
+Valeurs confirmées le 06/09/2026 sur le jar 26.2. Elles sont toutes posées d'un
+coup par `new Item.Properties().sword(ToolMaterial.NETHERITE, 3.0F, -2.4F)`, qui
+est public — inutile de les recopier à la main.
 
-🔷 Rareté `EPIC` (nom violet), item non consumé par le feu (`fire_resistant`),
-pas d'empilement. Une épée légendaire qui brûle dans la lave serait frustrante.
+| Propriété | Valeur | Composant |
+| --- | --- | --- |
+| Dégâts d'attaque | **7.0** (3.0 de base + 4.0 du netherite) → 8 affiché | `ATTRIBUTE_MODIFIERS` |
+| Vitesse d'attaque | **-2.4** → 1,6 attaque/s | `ATTRIBUTE_MODIFIERS` |
+| Durabilité max | **2031** | `MAX_DAMAGE` |
+| Enchantabilité | **15** | `ENCHANTABLE` |
+| Dégâts par coup | 1 | `WEAPON` |
+| Minage | toiles 15.0, `SWORD_EFFICIENT` 1.5, 2 de durabilité par bloc | `TOOL` |
+
+Il n'existe plus de classe `SwordItem` en 26.2 : une épée est un `Item` nu dont
+les `Properties` portent tous les composants.
+
+Ajouts propres au mod : rareté `EPIC` (nom violet) et `fireResistant()` — comme
+l'épée en netherite vanilla, qui a déjà cette dernière. Pas d'empilement, posé
+d'office par `durability(...)`.
 
 ### 2.2 Réparation ✅
 
@@ -53,14 +63,39 @@ pas d'empilement. Une épée légendaire qui brûle dans la lave serait frustran
 - **Interdite** par matériau : aucun lingot, netherite ou autre item ne répare
   l'épée.
 
-Concrètement, ne pas déclarer de `repair_ingredient` suffit : les trois
-mécaniques de combinaison de deux items identiques ne passent pas par
-l'ingrédient de réparation. Il n'y a donc **rien à bloquer** — c'est une
-simplification par rapport à la version précédente de cette spec, qui interdisait
-toute réparation et demandait un mixin sur l'enclume.
+**Implémenté à l'étape 2.** La mise en œuvre est plus subtile que « ne rien
+déclarer », parce que `.sword(ToolMaterial.NETHERITE, ...)` pose lui-même
+`REPAIRABLE` sur le tag du lingot de netherite, via `applyCommonProperties`.
 
-Trois conséquences du comportement vanilla, à vérifier en jeu et à accepter ou
-corriger :
+La solution retenue : `component()` chaîne des `components.set(type, value)`,
+donc **le dernier appel gagne**. On écrase avec un ensemble vide, ce qui rend
+`Repairable.isValidRepairItem` faux pour tout matériau :
+
+```java
+.component(DataComponents.REPAIRABLE, new Repairable(HolderSet.empty()))
+```
+
+Les trois mécaniques de combinaison de deux exemplaires, elles, ne consultent
+jamais `REPAIRABLE` — vérifié dans `AnvilMenu.createResult()`,
+`GrindstoneMenu.mergeItems()` et `RepairItemRecipe.canCombine()`, qui ne testent
+que « même item » plus `MAX_DAMAGE`/`DAMAGE`. Neutraliser `REPAIRABLE` interdit
+donc le lingot et **rien d'autre**.
+
+Confirmé en jeu le 06/09/2026, les quatre cas :
+
+| Test | Résultat |
+| --- | --- |
+| Enclume, deux Master Swords | ✅ répare |
+| Table de craft, deux Master Swords | ✅ répare |
+| Meule, deux Master Swords | ✅ répare |
+| Enclume, Master Sword + lingot de netherite | ✅ **refusé**, slot de résultat vide |
+| *Contrôle* : enclume, épée netherite + lingot | ✅ répare toujours — vanilla intact |
+
+Le test de contrôle compte autant que les autres : il prouve qu'on a neutralisé
+la réparation par matériau **sur notre item seulement**, sans toucher au reste
+du jeu.
+
+Trois conséquences du comportement vanilla, à accepter ou corriger :
 
 - La **meule** retire les enchantements en réparant. C'est vanilla ; comme
   l'épée porte potentiellement tous les enchantements d'épée (§2.4), l'échange
@@ -74,10 +109,16 @@ Réparer suppose de posséder **deux** épées, donc d'avoir trouvé deux struct
 (§4.1). La réparation reste rare par construction ; la voie normale est la
 régénération temporelle (§2.3).
 
-🔷 Détail à traiter à l'implémentation : quand deux épées fusionnent, le
-composant de régénération (§2.3) doit être recombiné. On garde le **plus récent**
-des deux « derniers coups portés » — le choix conservateur, sinon fusionner une
-épée fraîchement utilisée avec une épée au repos effacerait la pénalité.
+🔷 Détail à traiter à l'étape 4 : quand deux épées fusionnent, le composant de
+régénération (§2.3) doit être recombiné. On garde le **plus récent** des deux
+« derniers coups portés » — le choix conservateur, sinon fusionner une épée
+fraîchement utilisée avec une épée au repos effacerait la pénalité.
+
+⚠️ Ça ne tombera **pas** tout seul : `AnvilMenu.createResult()` fait
+`ItemStack result = input.copy()` puis ne fusionne explicitement que les dégâts
+et les enchantements. **Tous les autres composants de l'item de droite sont
+silencieusement perdus.** Il faudra donc un mixin sur `createResult` — c'est du
+code en plus, à prévoir dans l'étape 4.
 
 ### 2.3 Régénération de durabilité ✅
 
@@ -116,7 +157,34 @@ Modèle retenu :
 - Enchantable **à la table d'enchantement** et **à l'enclume** (livre + épée),
   sans restriction.
 
-🔷 Mise en œuvre : les exclusivités vanilla sont des tags
+**Prérequis posé à l'étape 2 : l'épée doit être dans `#minecraft:swords`.**
+C'est le seul tag vanilla qui contienne `netherite_sword`, et **tous** les
+enchantements d'épée y aboutissent par la chaîne `enchantable/*` — vérifié
+fichier par fichier dans le jar :
+
+| Enchantement | `supported_items` | résout vers |
+| --- | --- | --- |
+| Sharpness | `#enchantable/sharp_weapon` | → `melee_weapon` → `#swords` |
+| Smite, Bane of Arthropods | `#enchantable/weapon` | → `sharp_weapon` → `#swords` |
+| Looting, Knockback | `#enchantable/melee_weapon` | → `#swords` |
+| Fire Aspect | `#enchantable/fire_aspect` | → `melee_weapon` → `#swords` |
+| Sweeping Edge | `#enchantable/sweeping` | → `#swords` |
+| Unbreaking, Mending | `#enchantable/durability` | → `#swords` |
+
+Le composant `ENCHANTABLE` (15) ne suffit **pas** : il donne l'enchantabilité,
+pas l'éligibilité, qui passe par `Enchantment.canEnchant` →
+`supportedItems().contains(...)`. Sans le tag, l'épée n'accepterait aucun
+enchantement, et le mixin d'exclusivité de l'étape 5 travaillerait dans le vide.
+
+Le même tag conditionne l'**attaque tournoyante** : `Player` teste
+`getItemInHand(MAIN_HAND).is(ItemTags.SWORDS)`. Sans lui, §2.1 « stats
+identiques à l'épée netherite » serait faux.
+
+D'où le fichier `src/main/resources/data/minecraft/tags/item/swords.json`
+(`tags/item/` au **singulier**). Les tags fusionnent entre packs par défaut :
+déclarer notre seule épée ne remplace pas la liste vanilla.
+
+🔷 Mise en œuvre du cumul : les exclusivités vanilla sont des tags
 (`data/minecraft/tags/enchantment/exclusive_set/...`). On ne peut pas les vider
 sans casser toutes les autres épées. Il faut donc un point d'accroche qui teste
 « la pile est-elle une Master Sword ? » avant d'appliquer l'exclusivité —
@@ -476,20 +544,35 @@ Enregistrements dans des classes à **initialisation statique** — le mémo §8
 insiste sur l'ordre d'initialisation, et une particule doit être enregistrée des
 deux côtés.
 
+Deux pièges relevés à la relecture de l'étape 2, à garder en tête pour la suite :
+
+- **Un mixin ne doit pas référencer `ModItems`.** L'enregistrement de l'épée est
+  un effet de bord du `<clinit>` de cette classe : un mixin qui la touche
+  déclencherait l'initialisation à un moment imprévu. Tester plutôt
+  `stack.is(ModItemIds.MASTER_SWORD)` — `ModItemIds` n'a aucun effet de bord.
+- **L'item est un `Item` nu aujourd'hui.** Les étapes 4 (`inventoryTick` pour la
+  régénération) et 6 (hook d'attaque chargée) imposeront de passer à
+  `MasterSwordItem extends Item`. Changement d'une ligne, mais à ne pas oublier.
+  Le nom de classe doit finir par `Item`, sans quoi le constructeur vanilla
+  logge une erreur en développement.
+
 ### 7.4 À vérifier avant d'écrire du code
 
 Aucun de ces points ne doit être codé de mémoire. Sous-agent + `javap` +
 `genSources`, comme le veut `CLAUDE.md`.
 
-1. Stats exactes de `NETHERITE_SWORD` en 26.2 et forme de `ToolMaterial`.
+1. ~~Stats exactes de `NETHERITE_SWORD` et forme de `ToolMaterial`~~ — **fait le
+   06/09/2026**, voir §2.1.
 2. Comment déclarer un `DataComponentType` custom et le persister sur un
    `ItemStack` ; comment vanilla fusionne les composants à l'enclume (§2.2).
+   (La moitié « enclume » est faite : `AnvilMenu.createResult()` lu, voir §2.2.)
 3. Le hook d'attaque côté item en 26.2 (`hurtEnemy` existe-t-il encore ? sous
    quelle signature ?), comment lire la charge d'attaque du joueur, et l'API de
    cooldown d'item.
 4. Où vanilla teste l'exclusivité entre enchantements.
-5. Que l'absence de `repair_ingredient` n'empêche **pas** la combinaison de deux
-   items identiques à l'enclume, à la meule et à la table de craft (§2.2).
+5. ~~Que l'absence d'ingrédient de réparation n'empêche pas la combinaison de
+   deux items identiques~~ — **fait le 06/09/2026**, et corrigé : ce n'est pas
+   l'absence qui compte, il faut écraser `REPAIRABLE`. Voir §2.2.
 6. ~~Format 26.2 de `structure_set` et espacement inter-sets~~ — **fait le
    06/09/2026**, voir §4.1. Reste à vérifier : le format de `template_pool` et
    la pose d'une structure NBT en 26.2.
@@ -509,7 +592,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | # | Étape | Contenu | État |
 | --- | --- | --- | --- |
 | 1 | Squelette | wrapper Gradle copié, `fabric.mod.json`, `LICENSE` MIT, `.gitattributes`, build vide qui se lance | **fait** 06/09/2026 |
-| 2 | L'item nu | épée aux stats netherite, texture, modèle, réparation par combinaison vérifiée | à faire |
+| 2 | L'item nu | épée aux stats netherite, texture, modèle, réparation par combinaison vérifiée | **fait** 06/09/2026 |
 | 3 | Config | fichier JSON, `Codec`, chargement, `/mastersword reload`, mixin `getMaxDamage` | à faire |
 | 4 | Régénération | composant custom, décompte du temps de monde, remise à zéro au combat, fusion à l'enclume | à faire |
 | 5 | Enchantements | mixin d'exclusivité, test Sharpness + Smite | à faire |
@@ -540,6 +623,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | Date | Décision |
 | --- | --- |
 | 06/09/2026 | Spécification initiale rédigée. `CLAUDE.md` allégé : les specs vivent ici. |
+| 06/09/2026 | **Étape 2 faite.** Item `mastersword:master_sword` enregistré, stats netherite via `Properties.sword(...)`, rareté EPIC, texture 16×16 dessinée, traductions fr/en, injection dans l'onglet créatif **Combat** juste après l'épée en netherite (`CreativeModeTabEvents.modifyOutputEvent`, et non `ItemGroupEvents` qui n'existe pas en 26.2). Réparation par matériau neutralisée par un `Repairable(HolderSet.empty())` — voir §2.2, `sword()` la posait d'office. Testé en jeu : onglet, enclume, meule, table de craft. **Correctif après relecture** : l'épée n'était dans aucun tag, donc n'acceptait aucun enchantement et perdait l'attaque tournoyante — ajout à `#minecraft:swords`, voir §2.4. Enchantements et sweep confirmés en jeu ensuite. |
 | 06/09/2026 | **Étape 1 faite.** Squelette Fabric 26.2 qui build (`BUILD SUCCESSFUL`, `mastersword-0.1.0.jar`). Package `re.jerome.mastersword` et `group=re.jerome`, alignés sur Argilus. Source sets séparés `src/main` / `src/client`. Versions revérifiées à la source : loader **0.19.5**, fabric-api **0.159.0+26.2**, loom 1.17.19. Licence MIT `Copyright (c) 2026 Jerome`. Dépôt git local initialisé, sans remote. |
 | 06/09/2026 | `spacing` fixé à **72** et non 80 : à `spacing` égal, nos cellules s'alignent sur celles du manoir et `triangular` corrèle les deux tirages, ce qui ferait annuler l'épée par l'exclusion précisément dans les forêts à manoir. Confirmé au passage que l'exclusion est à sens unique et qu'aucun manoir n'est perdu. |
 | 06/09/2026 | Génération élucidée sur le jar 26.2 (§4.1). La rareté du manoir vient de `spacing: 80` (cellules de 1280 blocs) **cumulé** au filtre de biome : on calque ce réglage, avec un `salt` différent. `exclusion_zone` existe en JSON vanilla (plafond 16 chunks, un seul `other_set`, `@Deprecated`) et couvre les 120 blocs sans code. Seules deux structures de surface partagent le Dark Forest : manoir et portail en ruine. Le `StructurePlacement` custom passe de « probablement nécessaire » à « repli si le test en jeu déçoit ». |

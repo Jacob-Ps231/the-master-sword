@@ -4,6 +4,7 @@ import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import re.jerome.mastersword.registry.ModItems;
 
 public class MasterSwordMod implements ModInitializer {
 	public static final String MOD_ID = "mastersword";
@@ -16,6 +17,7 @@ public class MasterSwordMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		ModItems.register();
 		LOGGER.info("The Master Sword is waiting in the dark forest.");
 	}
 }
