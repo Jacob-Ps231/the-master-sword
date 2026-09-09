@@ -27,6 +27,15 @@ public class MasterSwordItem extends Item {
 		super(properties);
 	}
 
+	/**
+	 * Shared by every mixin that needs to single this sword out. It lives here
+	 * rather than on ModItems because this class has no static fields: touching it
+	 * from a mixin cannot trigger an item registration at an unexpected moment.
+	 */
+	public static boolean isMasterSword(ItemStack stack) {
+		return stack.getItem() instanceof MasterSwordItem;
+	}
+
 	@Override
 	public void postHurtEnemy(ItemStack stack, LivingEntity mob, LivingEntity attacker) {
 		// Item.postHurtEnemy is empty in 26.2; the weapon's durability cost is

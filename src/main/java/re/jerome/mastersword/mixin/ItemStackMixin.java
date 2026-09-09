@@ -42,6 +42,6 @@ public abstract class ItemStackMixin {
 	}
 
 	private boolean mastersword$isMasterSword() {
-		return ((ItemStack) (Object) this).getItem() instanceof MasterSwordItem;
+		return MasterSwordItem.isMasterSword((ItemStack) (Object) this);
 	}
 }

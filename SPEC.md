@@ -290,17 +290,66 @@ D'où le fichier `src/main/resources/data/minecraft/tags/item/swords.json`
 (`tags/item/` au **singulier**). Les tags fusionnent entre packs par défaut :
 déclarer notre seule épée ne remplace pas la liste vanilla.
 
-🔷 Mise en œuvre du cumul : les exclusivités vanilla sont des tags
-(`data/minecraft/tags/enchantment/exclusive_set/...`). On ne peut pas les vider
-sans casser toutes les autres épées. Il faut donc un point d'accroche qui teste
-« la pile est-elle une Master Sword ? » avant d'appliquer l'exclusivité —
-vraisemblablement un mixin sur la vérification de compatibilité. **Emplacement
-exact à trouver par sous-agent** (`javap` / `genSources`), pas de mémoire.
+#### Le cumul — implémenté à l'étape 5
 
-À couvrir aussi : la table d'enchantement propose des lots d'enchantements
-compatibles entre eux ; lever l'exclusivité côté compatibilité ne garantit pas
-que la table en propose plusieurs d'un coup. Le résultat attendu — les cumuler
-via des livres à l'enclume — fonctionnera de toute façon.
+**L'exclusivité est portée par l'enchantement, jamais par l'item :**
+
+```java
+public static boolean areCompatible(Holder<Enchantment> enchantment, Holder<Enchantment> other) {
+    return !enchantment.equals(other)
+        && !enchantment.value().exclusiveSet.contains(other)
+        && !other.value().exclusiveSet.contains(enchantment);
+}
+```
+
+Statique, deux `Holder`, **aucun `ItemStack`**. Aucune API Fabric ne permet de la
+lever par item — recherche exhaustive sur les 61 jars : `EnchantmentEvents.MODIFY`
+peut bien réécrire l'`exclusiveSet` via `builder.exclusiveWith(...)`, mais il est
+déclenché une fois par enchantement au chargement des registres et produit un
+`record` immuable partagé par tout le jeu. Il lèverait la règle pour **toutes**
+les épées, exactement comme le ferait un datapack surchargeant
+`tags/enchantment/exclusive_set/damage.json`.
+
+D'où trois mixins, aux trois seuls appelants de `areCompatible` du jeu entier :
+
+| Mixin | Couvre | La pile vient de |
+| --- | --- | --- |
+| `AnvilMenuMixin` | enclume | `getSlot(INPUT_SLOT)` — API publique, pas de `@Local` |
+| `EnchantmentHelperMixin` | table, `EnchantWithLevelsFunction`, `EnchantmentsByCost`, `enchantItem` | paramètre de `selectEnchantment` |
+| `EnchantCommandMixin` | `/enchant` | variable locale |
+
+⚠️ **`filterCompatibleEnchantments` sert aussi à autre chose.** `areCompatible`
+commence par `!enchantment.equals(other)` : elle déclare donc un enchantement
+**incompatible avec lui-même**, et ce filtre est du même coup ce qui empêche la
+boucle de tirage de repiocher le même. Le sauter entièrement donnerait
+« Tranchant IV, Tranchant IV ». Le mixin ne l'ignore pas, il le remplace par le
+retrait du seul doublon.
+
+⚠️ Effet de bord assumé à l'enclume : renvoyer `true` fait aussi sauter le
+`price++` que vanilla applique par paire incompatible. C'est correct — cette
+majoration est la pénalité d'un enchantement gaspillé, or ici il est appliqué.
+
+Aucun conflit avec la Fabric API : ses propres mixins visent `canEnchant` et
+`isPrimaryItem`, des instructions différentes dans les mêmes méthodes.
+
+Confirmé en jeu le 09/09/2026, avec le test de contrôle qui compte : la Master
+Sword cumule Tranchant et Châtiment à l'enclume, à la table et par `/enchant`,
+et **une épée en netherite refuse toujours**.
+
+Deux conséquences à connaître, relevées à la relecture :
+
+- **La levée est totale, pas ciblée.** Ce n'est pas « Tranchant + Châtiment » qui
+  est débloqué, c'est *tout* groupe d'exclusivité — y compris ceux qui ne
+  concernent pas une épée. Sans effet pratique aujourd'hui, mais à garder en tête
+  si un enchantement moddé arrive un jour.
+- **La table devient nettement plus généreuse**, au-delà de la seule règle.
+  Vanilla vide le pool de candidats agressivement après chaque tirage ; désormais
+  un seul élément en sort par tour. L'épée sortira couramment de la table avec
+  toute la famille de dégâts d'un coup.
+
+Le coût à l'enclume, lui, ne baisse jamais par rapport à vanilla : la majoration
+sautée est remplacée par le tarif réel de l'enchantement, qui lui est supérieur
+ou égal. Aucun « Trop coûteux » n'est esquivé.
 
 ---
 
@@ -692,8 +741,9 @@ src/main/java/re/jerome/mastersword/
 ├─ block/PedestalBlock, PedestalBlockEntity
 ├─ entity/LightWaveEntity
 ├─ worldgen/                 StructurePlacement custom (le reste en JSON data/)
-└─ mixin/ItemStackMixin      ✔ durabilité configurable ; l'exclusivité
-                             d'enchantements viendra à l'étape 5
+└─ mixin/                    ItemStackMixin ✔ durabilité configurable,
+                             AnvilMenuMixin ✔, EnchantmentHelperMixin ✔,
+                             EnchantCommandMixin ✔ exclusivité levée
 
 src/client/java/re/jerome/mastersword/client/
 ├─ MasterSwordClient         point d'entrée client (ClientModInitializer) ✔ créé
@@ -757,7 +807,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 2 | L'item nu | épée aux stats netherite, texture, modèle, réparation par combinaison vérifiée | **fait** 06/09/2026 |
 | 3 | Config | fichier JSON, `Codec`, chargement, `/mastersword reload`, mixin `getMaxDamage` | **fait** 06/09/2026 |
 | 4 | Régénération | composant custom, décompte sur l'horloge du monde, remise à zéro au combat | **fait** 07/09/2026 |
-| 5 | Enchantements | mixin d'exclusivité, test Sharpness + Smite | à faire |
+| 5 | Enchantements | mixin d'exclusivité, test Sharpness + Smite | **fait** 09/09/2026 |
 | 6 | Vague de lumière | entité, rendu, dégâts, cooldown 15 s, équilibrage | à faire |
 | 7 | Socle | bloc, BlockEntity, rendu de l'épée plantée, retrait et remise | à faire |
 | 8 | Génération | structure NBT, `structure_set` calqué sur le manoir, `exclusion_zone` | à faire |
@@ -784,6 +834,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | Date | Décision |
 | --- | --- |
 | 06/09/2026 | Spécification initiale rédigée. `CLAUDE.md` allégé : les specs vivent ici. |
+| 09/09/2026 | **Étape 5 faite.** Exclusivité entre enchantements levée pour la seule Master Sword, par trois mixins aux trois seuls appelants de `areCompatible` : `AnvilMenuMixin`, `EnchantmentHelperMixin`, `EnchantCommandMixin`. Aucune API Fabric ne pouvait le faire par item — `EnchantmentEvents.MODIFY` est global. Table **et** enclume couvertes (§2.4). Piège évité : `filterCompatibleEnchantments` empêche aussi de repiocher deux fois le même enchantement, donc le mixin le remplace au lieu de le sauter. Testé en jeu avec le contrôle sur l'épée netherite, qui refuse toujours. |
 | 07/09/2026 | **Étape 4 faite.** Composant `mastersword:last_combat_use` (un `long`, `persistent` + `ignoreSwapAnimation`), régénération dans `inventoryTick`, remise à zéro dans `postHurtEnemy`, clé `full_regen_days` dans la config. **Correction majeure de §2.3** : dormir n'avance pas `getGameTime()` en 26.2 — le cycle jour/nuit est passé dans `ServerClockManager`, on suit `getOverworldClockTime()`. La fusion de deux épées garde le comportement par défaut, sans mixin (§2.2). Testé en jeu : `/time add`, le lit, le recul de l'horloge, la reprise depuis un coffre. **Corrections de relecture** : temps consommé arrondi au **plafond** et non au plancher — le plancher rendait la régénération 2,68 % trop rapide aux défauts et 49 % en config extrême (mesuré par simulation tick par tick) ; et la fenêtre de réversibilité de `max_durability` n'est plus « jusqu'au prochain coup » mais quelques secondes, puisque la régénération écrit désormais toute seule. |
 | 06/09/2026 | **Étape 3 faite.** `config/mastersword.json` lu par `Codec` + `JsonOps`, section `item` seulement — une clé qui ne fait rien est pire qu'une clé absente, les autres sections viendront avec leurs étapes. `/mastersword reload` via `CommandRegistrationCallback`. `ItemStackMixin` sur `getMaxDamage()I` et `isDamageableItem()Z`. `MasterSwordItem` créée dès maintenant pour que le mixin teste un `instanceof` sans réveiller le `<clinit>` de `ModItems`. Deux pièges rencontrés : `optionalFieldOf` omet les valeurs par défaut à l'encodage (d'où deux codecs), et `CommandSourceStack.hasPermission(int)` n'existe plus en 26.2. |
 | 06/09/2026 | Texture repassée en **64×64** d'après le proto de Jérôme (garde ailée, losanges dorés, manche tressé), redressée à 45° parce que `handheld` ajoute 55°. Jérôme reprend la texture définitive de son côté ; le contrat de remplacement est en §2.1. Question ouverte n° 1 (textures) fermée. |
