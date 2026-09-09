@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import re.jerome.mastersword.command.MasterSwordCommand;
 import re.jerome.mastersword.config.MasterSwordConfig;
+import re.jerome.mastersword.registry.ModComponents;
 import re.jerome.mastersword.registry.ModItems;
 
 public class MasterSwordMod implements ModInitializer {
@@ -23,6 +24,7 @@ public class MasterSwordMod implements ModInitializer {
 		// registers the sword with the attack and repair values read from the
 		// config, so the config has to be loaded first.
 		MasterSwordConfig.load();
+		ModComponents.register();
 		ModItems.register();
 		MasterSwordCommand.register();
 		LOGGER.info("The Master Sword is waiting in the dark forest.");

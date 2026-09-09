@@ -137,19 +137,25 @@ régénération (§2.3) doit être recombiné. On garde le **plus récent** des 
 « derniers coups portés » — le choix conservateur, sinon fusionner une épée
 fraîchement utilisée avec une épée au repos effacerait la pénalité.
 
-⚠️ Ça ne tombera **pas** tout seul, et il y a **trois** chemins à traiter, pas
-un seul :
+**Tranché à l'étape 4 : on garde le comportement par défaut, sans aucun mixin.**
 
-| Chemin | Ce qu'il fait de la pile | Composants custom |
+| Chemin | Ce qu'il fait de la pile | Composant de régénération |
 | --- | --- | --- |
-| `AnvilMenu.createResult` | `input.copy()` | ceux de gauche gardés, ceux de droite perdus |
-| `GrindstoneMenu.mergeItems` | `input.copyWithCount(n)` | idem |
-| `RepairItemRecipe.assemble` | `new ItemStack(first.getItem())` | **tous perdus**, pile neuve |
+| `AnvilMenu.createResult` | `input.copy()` | celui de **gauche survit** |
+| `GrindstoneMenu.mergeItems` | `input.copyWithCount(n)` | celui de **gauche survit** |
+| `RepairItemRecipe.assemble` | `new ItemStack(first.getItem())` | **perdu** → absent → au repos |
 
-Le composant de régénération devra donc être recombiné aux trois endroits, ou
-bien on accepte explicitement qu'une réparation à la meule ou au craft remette le
-compteur à neuf — ce qui se défend, puisque ces deux-là effacent déjà les
-enchantements. À trancher à l'étape 4.
+`ItemStack.copy()` recopie **tous** les composants sans filtrage, donc les deux
+premiers chemins conservent déjà l'horodatage de l'épée de gauche : il n'y avait
+rien à faire pour eux.
+
+Le 🔷 « garder le plus récent des deux » est **abandonné**. Le tenir exigerait
+trois mixins — aucune API Fabric ne couvre la fusion d'items, les 1778 classes de
+l'API ont été passées en revue — dont un visant un appel **par ordinal** dans
+`AnvilMenu.createResult`, qui casserait à la prochaine version de Minecraft en
+faisant crasher le jeu au démarrage (`defaultRequire: 1`). L'enjeu réel est nul :
+fusionner exige deux épées, donc deux structures (§4.1), et l'opération répare
+déjà la durabilité.
 
 ### 2.3 Régénération de durabilité ✅
 
@@ -161,22 +167,91 @@ enchantements. À trancher à l'étape 4.
 - La régénération est **progressive**, pas un palier : la durabilité remonte en
   continu à mesure que le temps passe.
 
-Modèle retenu :
+**Implémenté à l'étape 4.**
 
-- 2 jours + 2 nuits = **2 cycles complets** = **48 000 ticks** de temps de monde
-  (configurable).
-- On stocke sur l'`ItemStack`, dans un composant custom, le temps de monde
-  (`level.getGameTime()`) du dernier coup porté. Le sommeil avance
-  `getGameTime()` d'un coup, donc la règle « le lit compte » tombe gratuitement.
-- Durabilité rendue = `maxDamage × (ticks écoulés / 48 000)`, plafonnée à neuf.
-  Soit ~1 point toutes les 24 ticks pour une épée à 2031 de durabilité.
-- Recalcul paresseux dans `inventoryTick` (ou son équivalent 26.2), pas de tâche
-  planifiée. L'épée régénère donc **dans l'inventaire du joueur** ; 🔷 elle
-  régénère aussi posée dans un coffre, puisque le calcul est différentiel et se
-  rattrape à la prochaine lecture.
-- « Usage au combat » = dégât infligé à une entité (`hurtEnemy` / équivalent).
-  🔷 Casser un bloc avec l'épée ne compte pas comme combat, mais consomme quand
-  même de la durabilité — cohérent avec vanilla.
+#### ⚠️ Correction : le sommeil n'avance pas `getGameTime()`
+
+Ce document affirmait que « le sommeil avance `getGameTime()` d'un coup, donc la
+règle *le lit compte* tombe gratuitement ». **C'était faux en 26.2.**
+
+Le cycle jour/nuit a été sorti de `LevelData` : il vit dans un
+`net.minecraft.world.clock.ServerClockManager`. Dormir appelle
+`moveToTimeMarker(...)`, qui n'avance que `ClockInstance.totalTicks`, un champ
+privé du gestionnaire d'horloges, disjoint de `LevelData.gameTime`.
+`Level.getDayTime()` et `setDayTime()` **n'existent plus**.
+`ServerLevel.tickTime()` fait `setGameTime(getGameTime() + 1)` et rien d'autre :
+`getGameTime()` compte les ticks **joués** et ne saute jamais.
+
+On suit donc **`Level.getOverworldClockTime()`**, l'horloge du monde — ce qui est
+d'ailleurs la lecture littérale de cette spec, qui parle de jours et de nuits.
+
+**`getOverworldClockTime()` et non `getDefaultClockTime()`** : ce dernier passe
+par `dimensionType().defaultClock()`, un `Optional` vide dans une dimension sans
+cycle. Il renverrait **0 au Nether**, et le compteur repartirait à zéro à chaque
+portail. Confirmé en jeu : `/time add` au Nether répond « There is no default
+clock in dimension minecraft:the_nether ». L'horloge de l'Overworld, elle,
+continue d'avancer là-bas : `MinecraftServer.tickServer()` appelle
+`clockManager.tick()` une fois par tick serveur, globalement, pas par dimension.
+
+Trois conséquences assumées : l'horloge est **pausable** (gamerule
+`doDaylightCycle` — pas de jour qui passe, pas de régénération), elle n'est **pas
+monotone** (`/time set` peut la faire reculer, d'où un clamp), et elle peut avoir
+un `rate` ≠ 1.
+
+#### Le modèle
+
+- 2 jours + 2 nuits = **2 cycles** = **48 000 ticks d'horloge**, configurable par
+  `full_regen_days` (défaut 2.0). Un jour = `SharedConstants.TICKS_PER_GAME_DAY`
+  = 24 000.
+- Composant custom `mastersword:last_combat_use`, un `long` : l'instant
+  d'horloge du dernier coup porté. **Absent = épée au repos.**
+- Durabilité rendue = `maxDamage × écoulé / 48 000`, soit **1 point toutes les
+  24 ticks** d'horloge pour une épée à 2031. Progressif, pas de palier.
+
+  ⚠️ Le temps converti en durabilité est décompté **arrondi au plafond**. Un
+  point coûte `48 000 / 2031 = 23,63` ticks : arrondir au plancher rendrait
+  0,63 tick de crédit à chaque point, sans jamais le reprendre.
+
+  **L'erreur est bornée par le coût d'un point.** Elle reste donc négligeable
+  tant qu'un point coûte beaucoup de ticks, et enfle quand il n'en coûte qu'un
+  ou deux. Mesuré par simulation tick par tick :
+
+  | `max_durability` / `full_regen_days` | ticks par point | plancher | plafond |
+  | --- | --- | --- | --- |
+  | 2031 / 2 j — **les défauts** | 23,6 | −2,68 % | **+1,55 %** |
+  | 2031 / 1 j | 11,8 | −6,91 % | +1,55 % |
+  | 2031 / 0,2 j | 2,4 | −15,35 % | +26,94 % |
+  | 2031 / 0,1 j | 1,2 | −15,33 % | +69,25 % |
+  | 65535 / 1,5 j | 0,55 | −39,32 % | +82,04 % |
+  | 65535 / 0,1 j | 0,04 | −49,38 % | +1,17 % |
+
+  Aucun des deux arrondis n'est bon partout — le plafond est même *pire* que le
+  plancher dans la bande 1–3 ticks par point. Le plafond a été retenu parce
+  qu'il se trompe **en ralentissant**, jamais en accélérant, et qu'il est juste
+  là où ça compte : aux valeurs par défaut. Règle sûre : garder
+  `max_durability ≤ full_regen_ticks / 20` maintient le biais sous 5 % (les
+  défauts sont à 23,6, donc largement dedans).
+
+  Supprimer complètement la dérive demanderait de stocker aussi la durabilité de
+  départ — deux champs au lieu d'un, ou un horodatage encodant « quand l'épée
+  sera pleine ». Aux valeurs par défaut ça représente 37 secondes réelles sur
+  40 minutes de jeu : non rentable pour l'instant, mais c'est la voie si les
+  configurations rapides devaient être supportées proprement.
+- Recalcul paresseux dans `inventoryTick(ItemStack, ServerLevel, Entity,
+  EquipmentSlot)` — **serveur uniquement**, le type du paramètre le garantit.
+  Une épée dans un coffre ne tick pas, mais le calcul étant différentiel elle
+  rattrape tout son retard au premier tick après avoir été reprise. Vérifié en
+  jeu.
+- On ne réécrit l'horodatage que **quand on a soigné quelque chose**, et
+  seulement du temps réellement converti : réécrire à chaque tick perdrait le
+  reste de la division et resynchroniserait la pile au client 20 fois par
+  seconde.
+- **Le composant est retiré à durabilité pleine.** Sans ça, une épée réparée
+  puis laissée dix jours dans un coffre banquerait dix jours de crédit et se
+  régénérerait d'un coup à la première éraflure.
+- « Usage au combat » = `postHurtEnemy`, appelé après application des dégâts.
+  Casser un bloc n'est pas du combat mais consomme quand même de la durabilité —
+  cohérent avec vanilla, et vérifié en jeu.
 - ❓ La vague de lumière (§3) qui touche une cible remet-elle le compteur à
   zéro ? 🔷 Oui : c'est un usage au combat.
 
@@ -498,7 +573,7 @@ Découpage prévu :
 
 | Section | Contenu |
 | --- | --- |
-| `item` ✔ | `attack_damage`, `attack_speed`, `max_durability`, `unbreakable`, `repairable_with_netherite_ingot` ; la durée de régénération arrivera à l'étape 4 |
+| `item` ✔ | `attack_damage`, `attack_speed`, `max_durability`, `full_regen_days`, `unbreakable`, `repairable_with_netherite_ingot` |
 | `light_wave` | activée, cooldown, portée, vitesse, ratio de dégâts, largeur, coût en durabilité |
 | `structure` | activée, `spacing`, `separation`, distance minimale aux autres structures (120), biome cible |
 | `fog` | activé, rayon extérieur (50), rayon de densité maximale (10), couleur, intensité maximale |
@@ -512,15 +587,18 @@ chaud »**, les deux premières désormais vérifiées et traitées :
    `getDamageValue`, `isBarVisible`, `getBarWidth` et `getBarColor` passent
    toutes par lui. `unbreakable` intercepte en plus `isDamageableItem()Z` pour
    faire disparaître la barre.
-   ⚠️ **Baisser `max_durability` sous les dégâts déjà encaissés détruit l'épée
-   au coup suivant.** `getDamageValue()` fait `clamp(stocké, 0, getMaxDamage())` :
-   avec 1500 de dégâts stockés et `max_durability` ramené à 100, il renvoie
-   **100**, donc `dégâts == max` — l'épée paraît **entièrement cassée**. Tant que
-   rien n'écrit, remonter la valeur restaure tout, la lecture seule est
-   réversible. Mais le premier `setDamageValue` — un coup porté, Mending,
-   l'enclume, la meule — grave la valeur écrêtée, et `isBroken()` fait
-   disparaître l'épée. Le fichier de config le dit lui-même dans son
-   `_comment`.
+   ⚠️ **Baisser `max_durability` sous les dégâts déjà encaissés perd ces dégâts
+   en quelques secondes.** `getDamageValue()` fait
+   `clamp(stocké, 0, getMaxDamage())` : avec 1500 de dégâts stockés et
+   `max_durability` ramené à 100, il renvoie **100**, donc `dégâts == max` —
+   l'épée paraît **entièrement cassée**.
+   La lecture seule est réversible, mais le premier `setDamageValue` grave la
+   valeur écrêtée. Et depuis l'étape 4 ce n'est plus « au prochain coup » :
+   **la régénération écrit toute seule**, après `fullRegenTicks / maxDamage`
+   ticks, soit ~480 ticks (24 s) dans l'exemple ci-dessus. `setDamageValue` ne
+   consulte pas `isDamageableItem()`, il écrit toujours. La fenêtre pour revenir
+   en arrière se compte donc en secondes. Le fichier de config le dit lui-même
+   dans son `_comment`.
    ⚠️ `unbreakable: true` **empêche de fusionner deux épées** : `AnvilMenu` et
    `GrindstoneMenu` refusent un item qui se déclare non endommageable. La
    réparation par combinaison de §2.2 et le cumul d'enchantements par fusion
@@ -608,9 +686,9 @@ src/main/java/re/jerome/mastersword/
 ├─ MasterSwordMod            point d'entrée commun (ModInitializer) ✔ créé
 ├─ config/MasterSwordConfig  Codec, chargement, sauvegarde normalisée ✔ créé
 ├─ command/MasterSwordCommand  /mastersword reload ✔ créé
-├─ registry/                 ModItems ✔, ModItemIds ✔, puis ModBlocks,
-│                            ModBlockEntities, ModEntities, ModComponents
-├─ item/MasterSwordItem      ✔ créé (encore vide, rempli aux étapes 4 et 6)
+├─ registry/                 ModItems ✔, ModItemIds ✔, ModComponents ✔,
+│                            puis ModBlocks, ModBlockEntities, ModEntities
+├─ item/MasterSwordItem      ✔ régénération ; l'attaque chargée à l'étape 6
 ├─ block/PedestalBlock, PedestalBlockEntity
 ├─ entity/LightWaveEntity
 ├─ worldgen/                 StructurePlacement custom (le reste en JSON data/)
@@ -678,7 +756,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 1 | Squelette | wrapper Gradle copié, `fabric.mod.json`, `LICENSE` MIT, `.gitattributes`, build vide qui se lance | **fait** 06/09/2026 |
 | 2 | L'item nu | épée aux stats netherite, texture, modèle, réparation par combinaison vérifiée | **fait** 06/09/2026 |
 | 3 | Config | fichier JSON, `Codec`, chargement, `/mastersword reload`, mixin `getMaxDamage` | **fait** 06/09/2026 |
-| 4 | Régénération | composant custom, décompte du temps de monde, remise à zéro au combat, fusion à l'enclume | à faire |
+| 4 | Régénération | composant custom, décompte sur l'horloge du monde, remise à zéro au combat | **fait** 07/09/2026 |
 | 5 | Enchantements | mixin d'exclusivité, test Sharpness + Smite | à faire |
 | 6 | Vague de lumière | entité, rendu, dégâts, cooldown 15 s, équilibrage | à faire |
 | 7 | Socle | bloc, BlockEntity, rendu de l'épée plantée, retrait et remise | à faire |
@@ -706,6 +784,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | Date | Décision |
 | --- | --- |
 | 06/09/2026 | Spécification initiale rédigée. `CLAUDE.md` allégé : les specs vivent ici. |
+| 07/09/2026 | **Étape 4 faite.** Composant `mastersword:last_combat_use` (un `long`, `persistent` + `ignoreSwapAnimation`), régénération dans `inventoryTick`, remise à zéro dans `postHurtEnemy`, clé `full_regen_days` dans la config. **Correction majeure de §2.3** : dormir n'avance pas `getGameTime()` en 26.2 — le cycle jour/nuit est passé dans `ServerClockManager`, on suit `getOverworldClockTime()`. La fusion de deux épées garde le comportement par défaut, sans mixin (§2.2). Testé en jeu : `/time add`, le lit, le recul de l'horloge, la reprise depuis un coffre. **Corrections de relecture** : temps consommé arrondi au **plafond** et non au plancher — le plancher rendait la régénération 2,68 % trop rapide aux défauts et 49 % en config extrême (mesuré par simulation tick par tick) ; et la fenêtre de réversibilité de `max_durability` n'est plus « jusqu'au prochain coup » mais quelques secondes, puisque la régénération écrit désormais toute seule. |
 | 06/09/2026 | **Étape 3 faite.** `config/mastersword.json` lu par `Codec` + `JsonOps`, section `item` seulement — une clé qui ne fait rien est pire qu'une clé absente, les autres sections viendront avec leurs étapes. `/mastersword reload` via `CommandRegistrationCallback`. `ItemStackMixin` sur `getMaxDamage()I` et `isDamageableItem()Z`. `MasterSwordItem` créée dès maintenant pour que le mixin teste un `instanceof` sans réveiller le `<clinit>` de `ModItems`. Deux pièges rencontrés : `optionalFieldOf` omet les valeurs par défaut à l'encodage (d'où deux codecs), et `CommandSourceStack.hasPermission(int)` n'existe plus en 26.2. |
 | 06/09/2026 | Texture repassée en **64×64** d'après le proto de Jérôme (garde ailée, losanges dorés, manche tressé), redressée à 45° parce que `handheld` ajoute 55°. Jérôme reprend la texture définitive de son côté ; le contrat de remplacement est en §2.1. Question ouverte n° 1 (textures) fermée. |
 | 06/09/2026 | **Étape 2 faite.** Item `mastersword:master_sword` enregistré, stats netherite via `Properties.sword(...)`, rareté EPIC, texture 16×16 dessinée, traductions fr/en, injection dans l'onglet créatif **Combat** juste après l'épée en netherite (`CreativeModeTabEvents.modifyOutputEvent`, et non `ItemGroupEvents` qui n'existe pas en 26.2). Réparation par matériau neutralisée par un `Repairable(HolderSet.empty())` — voir §2.2, `sword()` la posait d'office. Testé en jeu : onglet, enclume, meule, table de craft. **Correctif après relecture** : l'épée n'était dans aucun tag, donc n'acceptait aucun enchantement et perdait l'attaque tournoyante — ajout à `#minecraft:swords`, voir §2.4. Enchantements et sweep confirmés en jeu ensuite. |

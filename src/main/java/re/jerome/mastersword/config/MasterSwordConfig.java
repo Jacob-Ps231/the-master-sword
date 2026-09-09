@@ -50,7 +50,8 @@ public record MasterSwordConfig(ItemConfig item) {
 	private static final String[] COMMENT = {
 		"The Master Sword -- configuration.",
 		"Delete this file to regenerate it with the default values.",
-		"Reloaded live by /mastersword reload: max_durability, unbreakable.",
+		"Reloaded live by /mastersword reload: max_durability, unbreakable,",
+		"full_regen_days.",
 		"Applied only on restart: attack_damage, attack_speed,",
 		"repairable_with_netherite_ingot -- they are baked onto the item when it",
 		"is registered.",
@@ -58,12 +59,21 @@ public record MasterSwordConfig(ItemConfig item) {
 		"1.0 every player has bare-handed.",
 		"",
 		"Careful with max_durability: lowering it below the damage a sword has",
-		"already taken makes that sword read as broken, and the next hit writes",
-		"the clamped value and destroys it. Raise it back before using the sword",
-		"and nothing is lost.",
+		"already taken makes that sword read as broken, and regeneration then",
+		"writes that clamped value within seconds -- no action from you needed --",
+		"which loses the original damage for good. Raise the value back straight",
+		"away if you lowered it by mistake.",
 		"unbreakable also stops two swords being combined in an anvil, a",
 		"grindstone or the crafting grid, since none of them accepts an item that",
 		"reports itself as undamageable.",
+		"",
+		"full_regen_days counts world-clock days, not real time: sleeping through",
+		"a night counts towards it, and a clock stopped by the doDaylightCycle",
+		"game rule stops regeneration entirely. One day is 24000 ticks.",
+		"Keep max_durability below full_regen_days * 1200 or so: regeneration",
+		"rounds to whole ticks, so a very short full_regen_days with a high",
+		"max_durability ends up noticeably slower than asked. The defaults are",
+		"well inside that.",
 	};
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -124,9 +134,10 @@ public record MasterSwordConfig(ItemConfig item) {
 			float attackDamage,
 			float attackSpeed,
 			int maxDurability,
+			float fullRegenDays,
 			boolean unbreakable,
 			boolean repairableWithNetheriteIngot) {
-		public static final ItemConfig DEFAULTS = new ItemConfig(7.0F, -2.4F, 2031, false, false);
+		public static final ItemConfig DEFAULTS = new ItemConfig(7.0F, -2.4F, 2031, 2.0F, false, false);
 
 		// The bounds live in the schema. max_durability starts at 1, never 0:
 		// Item.getBarWidth divides by it.
@@ -145,6 +156,10 @@ public record MasterSwordConfig(ItemConfig item) {
 									field(Codec.intRange(1, 65535), "max_durability",
 											DEFAULTS.maxDurability, everyField)
 											.forGetter(ItemConfig::maxDurability),
+									// Floor at 0.1 rather than 0: the value is a divisor.
+									field(Codec.floatRange(0.1F, 1000.0F), "full_regen_days",
+											DEFAULTS.fullRegenDays, everyField)
+											.forGetter(ItemConfig::fullRegenDays),
 									field(Codec.BOOL, "unbreakable",
 											DEFAULTS.unbreakable, everyField)
 											.forGetter(ItemConfig::unbreakable),
