@@ -1,6 +1,15 @@
 package re.jerome.mastersword.item;
 
 import net.minecraft.SharedConstants;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.Mth;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
+import re.jerome.mastersword.config.MasterSwordConfig.LightWaveConfig;
+import re.jerome.mastersword.entity.LightWaveEntity;
+import re.jerome.mastersword.registry.ModEntityTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -42,7 +51,7 @@ public class MasterSwordItem extends Item {
 		// applied by ItemStack.postHurtEnemy, after this returns. The order does
 		// not matter here -- the timestamp is written either way.
 		super.postHurtEnemy(stack, mob, attacker);
-		stack.set(ModComponents.LAST_COMBAT_USE, attacker.level().getOverworldClockTime());
+		markCombatUse(stack, attacker.level());
 	}
 
 	// Server-side only, once per tick per stack: the ServerLevel parameter type
@@ -68,11 +77,23 @@ public class MasterSwordItem extends Item {
 
 		long now = level.getOverworldClockTime();
 
-		// No component yet means the wear came from breaking blocks, which the spec
-		// does not count as combat: start the count from here rather than healing
-		// everything at once.
-		if (last == null || last > now) {
-			// last > now happens after /time set moves the clock backwards.
+		if (last == null) {
+			// The component doubles as the "healing has begun" flag. It is only set
+			// once the sword has actually dropped below the threshold, so a sword
+			// scratched down to 90% simply wears like any other; below half it starts
+			// mending, and then goes all the way back to full.
+			int maxDamage = stack.getMaxDamage();
+			int remaining = maxDamage - damage;
+			if (remaining > MasterSwordConfig.get().item().regenStartsBelow() * maxDamage) {
+				return;
+			}
+
+			stack.set(ModComponents.LAST_COMBAT_USE, now);
+			return;
+		}
+
+		if (last > now) {
+			// Happens after /time set moves the clock backwards.
 			stack.set(ModComponents.LAST_COMBAT_USE, now);
 			return;
 		}
@@ -109,5 +130,71 @@ public class MasterSwordItem extends Item {
 	private static long fullRegenTicks() {
 		float days = MasterSwordConfig.get().item().fullRegenDays();
 		return Math.max(1L, (long) (days * SharedConstants.TICKS_PER_GAME_DAY));
+	}
+
+	/**
+	 * Restarts the regeneration count. Both the melee hook and the beam call it.
+	 *
+	 * Only when healing is already under way: the component's absence means the
+	 * sword is not mending yet, and writing a timestamp would arm it regardless of
+	 * the threshold.
+	 */
+	public static void markCombatUse(ItemStack stack, Level level) {
+		if (stack.has(ModComponents.LAST_COMBAT_USE)) {
+			stack.set(ModComponents.LAST_COMBAT_USE, level.getOverworldClockTime());
+		}
+	}
+
+	/**
+	 * Throws the beam, if the cooldown allows. Both attack hooks funnel here: a
+	 * swing that hits nothing and a swing that lands travel different server paths,
+	 * but the shot itself is the same.
+	 */
+	public static void tryFireLightWave(ServerPlayer player, ItemStack stack) {
+		LightWaveConfig cfg = MasterSwordConfig.get().lightWave();
+		if (!cfg.enabled() || player.getCooldowns().isOnCooldown(stack)) {
+			return;
+		}
+
+		// The Zelda rule: the beam only answers to a player at full hearts. Losing
+		// half a heart costs the ranged attack until it is healed back.
+		//
+		// Compared the way the HUD draws it, which rounds up. Raw health would
+		// refuse the beam at 19.6 out of 20 -- ten full hearts on screen, and
+		// regeneration heals in steps of 1.0, so that state lasts a whole tick of
+		// natural regeneration and reads as a bug.
+		if (cfg.requiresFullHealth()
+				&& Mth.ceil(player.getHealth()) < Mth.ceil(player.getMaxHealth())) {
+			return;
+		}
+
+		ServerLevel level = player.level();
+		Vec3 look = player.getLookAngle().normalize();
+
+		LightWaveEntity wave = new LightWaveEntity(ModEntityTypes.LIGHT_WAVE, level);
+		wave.setOwner(player);
+		wave.setPos(player.getEyePosition().add(look.scale(0.6)));
+		// shoot rather than setDeltaMovement: it sets the rotation from the
+		// direction too, which is what the renderer orients the quad by.
+		wave.shoot(look.x, look.y, look.z, cfg.speed(), 0.0F);
+		wave.setDamage(meleeDamage(player) * cfg.damageRatio());
+		level.addFreshEntity(wave);
+
+		// Volume above 1 also stretches how far the sound carries -- roughly 16
+		// blocks per unit -- so this one reaches about 24 blocks rather than 13.
+		level.playSound(null, player.getX(), player.getY(), player.getZ(),
+				SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 1.5F, 1.4F);
+
+		// The cost is paid whether or not the beam connects: throwing it is the use.
+		if (cfg.durabilityCost() > 0) {
+			stack.hurtAndBreak(cfg.durabilityCost(), player, EquipmentSlot.MAINHAND);
+		}
+
+		player.getCooldowns().addCooldown(stack, cfg.cooldownTicks());
+		markCombatUse(stack, level);
+	}
+
+	private static float meleeDamage(ServerPlayer player) {
+		return (float) player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
 	}
 }

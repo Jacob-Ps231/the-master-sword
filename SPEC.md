@@ -4,14 +4,16 @@ Document vivant. Il décrit **ce qu'on construit** et **les décisions prises**.
 Les instructions de travail permanentes sont dans `CLAUDE.md`, les pièges de la
 machine et de Minecraft 26.2 dans `../SETUP-MC-MODDING.md`.
 
-Statut : *spécification validée, aucun code écrit.*
-Dernière mise à jour : 06/09/2026 (2ᵉ passe de relecture par Jérôme).
+Statut : **étapes 1 à 6 faites et testées en jeu** — l'épée, sa configuration, sa
+régénération, le cumul d'enchantements et la vague de lumière. Restent le socle,
+la génération et le brouillard (§8).
+Dernière mise à jour : 10/09/2026.
 
 Conventions de ce fichier :
 
 - ✅ **Confirmé** — validé par Jérôme, ne pas changer sans le lui demander.
 - 🔷 **Proposé** — choix de Claude Code, modifiable librement, à valider en passant.
-- ❓ **Ouvert** — décision à prendre, listée en §8.
+- ❓ **Ouvert** — décision à prendre, listée en §9.
 
 Toute valeur numérique de ce document est un **défaut de configuration** : elle
 est ajustable dans le fichier de config (§6), sauf mention contraire.
@@ -200,6 +202,16 @@ un `rate` ≠ 1.
 
 #### Le modèle
 
+- **La guérison ne démarre qu'en dessous de la moitié de la durabilité**
+  (`regen_starts_below`, défaut 0.5) — ajouté après essai en jeu, la remontée
+  permanente se voyait trop. Au-dessus du seuil l'épée s'use comme n'importe
+  quelle autre ; en dessous, elle se met à guérir et remonte **jusqu'à 100 %**.
+  Le seuil est un déclencheur, pas un plafond.
+
+  ⚠️ Subtilité qui rend le seuil réel : le composant sert aussi de drapeau
+  « guérison engagée ». `markCombatUse` ne réécrit donc l'horodatage **que si le
+  composant existe déjà** — sinon frapper un mob avec une épée à 90 % l'armerait
+  et relancerait la guérison en contournant le seuil.
 - 2 jours + 2 nuits = **2 cycles** = **48 000 ticks d'horloge**, configurable par
   `full_regen_days` (défaut 2.0). Un jour = `SharedConstants.TICKS_PER_GAME_DAY`
   = 24 000.
@@ -252,8 +264,8 @@ un `rate` ≠ 1.
 - « Usage au combat » = `postHurtEnemy`, appelé après application des dégâts.
   Casser un bloc n'est pas du combat mais consomme quand même de la durabilité —
   cohérent avec vanilla, et vérifié en jeu.
-- ❓ La vague de lumière (§3) qui touche une cible remet-elle le compteur à
-  zéro ? 🔷 Oui : c'est un usage au combat.
+- **Tirer** la vague de lumière (§3) remet le compteur à zéro, qu'elle touche ou
+  non : c'est un usage au combat, et elle coûte déjà un point de durabilité.
 
 ### 2.4 Enchantements ✅
 
@@ -358,23 +370,111 @@ ou égal. Aucun « Trop coûteux » n'est esquivé.
 Quand le joueur frappe avec la barre d'attaque pleine, l'épée projette une vague
 de lumière devant lui.
 
-| Paramètre | Défaut | Statut |
+**Implémentée à l'étape 6.** Elle part **à tout balayage à pleine charge, y
+compris dans le vide** — c'est ce qui en fait une vraie attaque à distance.
+
+| Paramètre | Défaut | Clé de config |
 | --- | --- | --- |
-| Condition | barre d'attaque à 100 % | ✅ |
-| Cooldown | **15 s** (300 ticks) | ✅ minimum 15 s |
-| Condition de durabilité | **aucune** | ✅ |
-| Portée | 12 blocs | 🔷 |
-| Vitesse | 1,2 bloc/tick | 🔷 |
-| Dégâts | 60 % des dégâts de mêlée de l'épée | 🔷 |
-| Largeur de la vague | ~1,5 bloc, traverse plusieurs entités | 🔷 |
-| Coût en durabilité | 1 point, en plus du coup lui-même | 🔷 |
+| Condition | barre d'attaque à 100 % | — |
+| **Joueur à pleine vie** | requis | `requires_full_health` |
+| Cooldown | 15 s | `cooldown_seconds` |
+| Condition de durabilité de l'épée | **aucune** | — |
+| Portée | 12 blocs | `range` |
+| Vitesse | 1,2 bloc/tick | `speed` |
+| Dégâts | 60 % des dégâts de mêlée | `damage_ratio` |
+| Largeur | 1,5 bloc, traverse plusieurs entités | `width` |
+| Coût en durabilité | 1 point | `durability_cost` |
 
-🔷 Le cooldown s'affiche avec la surcouche de cooldown vanilla sur l'icône de
-l'item (`ItemCooldowns`), pour qu'il soit lisible sans deviner.
+Le cooldown s'affiche tout seul en surcouche grise sur l'icône :
+`getCooldowns().addCooldown(stack, ticks)` côté serveur suffit,
+`ServerItemCooldowns` envoie le paquet et le HUD vanilla dessine. **Zéro code
+client.**
 
-🔷 Implémentation : une entité projectile custom, rendue par un quad texturé
-émissif plutôt qu'un modèle 3D. Elle traverse les blocs non solides, s'arrête sur
-un bloc plein, et n'inflige ses dégâts qu'une fois par entité.
+#### ⚠️ La charge d'attaque n'est pas lisible là où on l'attend
+
+`Player.attack(Entity)` appelle `onAttack()` — donc `attackStrengthTicker = 0` —
+**avant** de calculer `fullStrengthAttack`, et bien avant de passer la main à
+l'item :
+
+| Ligne | |
+| --- | --- |
+| 950 | `attackStrengthScale = getAttackStrengthScale(0.5F)` |
+| **953** | **`onAttack()` → le compteur est remis à zéro** |
+| 956 | `fullStrengthAttack = attackStrengthScale > 0.9F` |
+| 988 | `itemAttackInteraction(...)` → d'où partent `hurtEnemy` / `postHurtEnemy` |
+
+Depuis `postHurtEnemy`, `getAttackStrengthScale(0.5F)` renvoie ~**0,04** pour une
+épée à 1,6 de vitesse d'attaque : le test `> 0.9F` y serait **toujours faux**.
+
+D'où **deux** points d'accroche, parce que les deux gestes empruntent des chemins
+serveur différents :
+
+| Geste | Paquet | Mixin | Charge au moment du hook |
+| --- | --- | --- | --- |
+| Balayage à vide | `ServerboundSwingPacket` | `ServerPlayerMixin` sur `swing(...)` **HEAD** | encore lisible — le reset est à la fin de la méthode |
+| Balayage qui touche | `ServerboundAttackPacket`, traité **avant** le swing | `PlayerAttackMixin`, `@Local(index = 7) fullStrengthAttack` | déjà nulle, d'où l'emprunt du local vanilla |
+
+Ils ne peuvent pas tirer deux fois pour un même clic : quand l'attaque touche, le
+paquet d'attaque est traité en premier et remet le compteur à zéro, donc le
+paquet de swing qui suit voit une charge nulle. Le cooldown sert de seconde
+barrière.
+
+`@Local(index = …)` et non `ordinal` : le slot 8 est réutilisé par deux
+variables et le slot 13 par deux autres, ce qui rend le comptage par type
+fragile.
+
+#### L'entité
+
+`LightWaveEntity extends Projectile` **directement**, comme `LlamaSpit` — pas
+`ThrowableProjectile` ni `AbstractHurtingProjectile` : leur `applyInertia()` est
+`private` (traînée et accélération impossibles à annuler), et surtout leur
+`tick()` fait `setPos(hitResult.getLocation())` au premier impact, ce qui
+collerait la vague sur sa première cible au lieu de la traverser.
+
+`ProjectileUtil.getManyEntityHitResult(..., ClipContext.Block.COLLIDER)` fait
+tout le travail : `COLLIDER` traverse l'herbe haute, les fleurs et l'eau — leur
+forme de collision est vide — et s'arrête sur la pierre. Un `IntOpenHashSet`
+d'IDs déjà touchés garantit une seule blessure par entité, même quand la vague
+met plusieurs ticks à traverser un mob.
+
+Dégâts par `damageSources().indirectMagic(this, owner)` : le joueur passé en
+`causingEntity` suffit pour le butin, les advancements et l'agro, tout en
+laissant le recul partir de la vague et non du joueur.
+
+**Aucun code réseau.** `Projectile.getAddEntityPacket` transmet déjà l'ID du
+tireur et `ClientboundAddEntityPacket` porte le vecteur de mouvement.
+
+Rendu par un quad plat texturé, **couché parallèlement au sol** et orienté par la
+trajectoire (pas un billboard face caméra), en
+`RenderTypes.entityTranslucentEmissive` pour qu'il brille dans le noir.
+
+⚠️ Deux renommages 26.2 : `RenderType` vit dans
+`net.minecraft.client.renderer.rendertype` et **ses fabriques statiques sont dans
+`RenderTypes`** (pluriel) ; le rendu passe par `SubmitNodeCollector.submit(...)`,
+`render(...)` n'existe plus.
+
+⚠️ **La largeur ne s'obtient qu'avec la bonne surcharge.** La forme courte de
+`getManyEntityHitResult` **ignore l'`AABB` pour le test de touche réel** et
+retombe sur `computeMargin`, qui vaut 0 aux deux premiers ticks et plafonne à
+0,3 : la vague serait une **ligne** et `width` ne servirait à rien. C'est la
+surcharge à neuf paramètres, avec la marge passée explicitement, qui en fait un
+balayage — et elle ajoute un contrôle de ligne de vue, donc rien n'est touché à
+travers un mur.
+
+#### Deux conséquences assumées ✅
+
+**La vague ignore l'armure et le bouclier.** `indirect_magic` porte les tags
+`bypasses_armor` et `bypasses_shield`. Soixante pour cent des dégâts de mêlée qui
+passent à travers tout, c'est beaucoup en PvP — assumé le 10/09/2026, c'est le
+privilège d'une arme légendaire. Elle n'est en revanche **pas** réduite par
+Protection contre les projectiles (`is_projectile` n'est pas dans ses tags), et
+les sorcières y résistent à 15 % (`witch_resistant_to`).
+
+**Miner avec l'épée tire une vague.** Le client envoie un paquet de swing pour
+**tout** clic gauche, démarrage d'un cassage de bloc compris. Le filtre de charge
+élimine les coups suivants — le compteur est remis à zéro à chaque tick de
+minage — et le cooldown borne le reste, mais ça coûte un point de durabilité
+toutes les quinze secondes passées à miner. Assumé le 10/09/2026.
 
 ---
 
@@ -622,8 +722,8 @@ Découpage prévu :
 
 | Section | Contenu |
 | --- | --- |
-| `item` ✔ | `attack_damage`, `attack_speed`, `max_durability`, `full_regen_days`, `unbreakable`, `repairable_with_netherite_ingot` |
-| `light_wave` | activée, cooldown, portée, vitesse, ratio de dégâts, largeur, coût en durabilité |
+| `item` ✔ | `attack_damage`, `attack_speed`, `max_durability`, `full_regen_days`, `regen_starts_below`, `unbreakable`, `repairable_with_netherite_ingot` |
+| `light_wave` ✔ | `enabled`, `cooldown_seconds`, `range`, `speed`, `damage_ratio`, `width`, `durability_cost`, `requires_full_health` — toutes relues à chaud |
 | `structure` | activée, `spacing`, `separation`, distance minimale aux autres structures (120), biome cible |
 | `fog` | activé, rayon extérieur (50), rayon de densité maximale (10), couleur, intensité maximale |
 
@@ -739,16 +839,17 @@ src/main/java/re/jerome/mastersword/
 │                            puis ModBlocks, ModBlockEntities, ModEntities
 ├─ item/MasterSwordItem      ✔ régénération ; l'attaque chargée à l'étape 6
 ├─ block/PedestalBlock, PedestalBlockEntity
-├─ entity/LightWaveEntity
+├─ entity/LightWaveEntity    ✔ créée
 ├─ worldgen/                 StructurePlacement custom (le reste en JSON data/)
 └─ mixin/                    ItemStackMixin ✔ durabilité configurable,
                              AnvilMenuMixin ✔, EnchantmentHelperMixin ✔,
-                             EnchantCommandMixin ✔ exclusivité levée
+                             EnchantCommandMixin ✔ exclusivité levée,
+                             ServerPlayerMixin ✔, PlayerAttackMixin ✔ vague
 
 src/client/java/re/jerome/mastersword/client/
 ├─ MasterSwordClient         point d'entrée client (ClientModInitializer) ✔ créé
 ├─ PedestalRenderer
-├─ LightWaveRenderer
+├─ LightWaveRenderer      ✔ créé (+ LightWaveRenderState)
 └─ FogHandler
 ```
 
@@ -808,7 +909,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 3 | Config | fichier JSON, `Codec`, chargement, `/mastersword reload`, mixin `getMaxDamage` | **fait** 06/09/2026 |
 | 4 | Régénération | composant custom, décompte sur l'horloge du monde, remise à zéro au combat | **fait** 07/09/2026 |
 | 5 | Enchantements | mixin d'exclusivité, test Sharpness + Smite | **fait** 09/09/2026 |
-| 6 | Vague de lumière | entité, rendu, dégâts, cooldown 15 s, équilibrage | à faire |
+| 6 | Vague de lumière | entité, rendu, dégâts, cooldown 15 s, équilibrage | **fait** 10/09/2026 |
 | 7 | Socle | bloc, BlockEntity, rendu de l'épée plantée, retrait et remise | à faire |
 | 8 | Génération | structure NBT, `structure_set` calqué sur le manoir, `exclusion_zone` | à faire |
 | 9 | Brouillard | synchro serveur → client, courbe 50 → 10 blocs, disparition définitive | à faire |
@@ -823,9 +924,8 @@ brancher après coup obligerait à repasser sur chaque fichier.
 
 | # | Question | Impact |
 | --- | --- | --- |
-| 1 | Une vague de lumière qui touche une cible remet-elle le compteur de régénération à zéro ? 🔷 oui | §2.3 |
-| 2 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
-| 3 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
+| 1 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
+| 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
 
 ---
 
@@ -834,6 +934,9 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | Date | Décision |
 | --- | --- |
 | 06/09/2026 | Spécification initiale rédigée. `CLAUDE.md` allégé : les specs vivent ici. |
+| 10/09/2026 | **Étape 6 faite.** `LightWaveEntity extends Projectile`, tirée par **deux** mixins — `ServerPlayerMixin` sur `swing` pour le balayage à vide, `PlayerAttackMixin` avec `@Local` sur `fullStrengthAttack` pour le coup qui touche. Motif : `Player.attack` appelle `onAttack()` — donc remet `attackStrengthTicker` à zéro — **avant** de calculer `fullStrengthAttack`, donc la charge est illisible depuis `postHurtEnemy`. Rendu par un quad plat émissif, couché parallèlement au sol. Section `light_wave` dans la config. Question ouverte n° 1 fermée : **tirer** la vague remet le compteur de régénération à zéro. |
+| 10/09/2026 | Corrections de relecture sur l'étape 6. **`width` ne servait à rien** : la surcharge courte de `getManyEntityHitResult` ignore l'`AABB` pour le test de touche et retombe sur `computeMargin` (≤ 0,3), la vague était une ligne — passée à la surcharge à neuf paramètres. **La condition de pleine vie refusait le tir à 19,6 PV** alors que le HUD montre dix cœurs pleins : comparaison passée en `Mth.ceil`, comme le HUD. Plus le culling du quad (2,8 blocs contre une hitbox de 0,6), `shouldBeSaved → false` avec plafond de 200 ticks, et l'exclusion explicite du lanceur. Sons d'impact ajoutés au passage, son du tir monté à 1,5. Deux conséquences assumées par Jérôme : la vague ignore armure et bouclier, et miner avec l'épée en tire une. |
+| 10/09/2026 | Après essai en jeu, deux ajustements demandés par Jérôme : la régénération ne démarre plus qu'**en dessous de 50 % de durabilité** (`regen_starts_below`, déclencheur et non plafond — elle remonte ensuite jusqu'à 100 %), et la vague exige que le **joueur soit à pleine vie** (`requires_full_health`). Le seuil a demandé de ne réécrire l'horodatage dans `markCombatUse` que si le composant existe déjà, sans quoi un coup porté à 90 % de durabilité aurait armé la guérison en contournant le seuil. Vague repassée à l'horizontale. |
 | 09/09/2026 | **Étape 5 faite.** Exclusivité entre enchantements levée pour la seule Master Sword, par trois mixins aux trois seuls appelants de `areCompatible` : `AnvilMenuMixin`, `EnchantmentHelperMixin`, `EnchantCommandMixin`. Aucune API Fabric ne pouvait le faire par item — `EnchantmentEvents.MODIFY` est global. Table **et** enclume couvertes (§2.4). Piège évité : `filterCompatibleEnchantments` empêche aussi de repiocher deux fois le même enchantement, donc le mixin le remplace au lieu de le sauter. Testé en jeu avec le contrôle sur l'épée netherite, qui refuse toujours. |
 | 07/09/2026 | **Étape 4 faite.** Composant `mastersword:last_combat_use` (un `long`, `persistent` + `ignoreSwapAnimation`), régénération dans `inventoryTick`, remise à zéro dans `postHurtEnemy`, clé `full_regen_days` dans la config. **Correction majeure de §2.3** : dormir n'avance pas `getGameTime()` en 26.2 — le cycle jour/nuit est passé dans `ServerClockManager`, on suit `getOverworldClockTime()`. La fusion de deux épées garde le comportement par défaut, sans mixin (§2.2). Testé en jeu : `/time add`, le lit, le recul de l'horloge, la reprise depuis un coffre. **Corrections de relecture** : temps consommé arrondi au **plafond** et non au plancher — le plancher rendait la régénération 2,68 % trop rapide aux défauts et 49 % en config extrême (mesuré par simulation tick par tick) ; et la fenêtre de réversibilité de `max_durability` n'est plus « jusqu'au prochain coup » mais quelques secondes, puisque la régénération écrit désormais toute seule. |
 | 06/09/2026 | **Étape 3 faite.** `config/mastersword.json` lu par `Codec` + `JsonOps`, section `item` seulement — une clé qui ne fait rien est pire qu'une clé absente, les autres sections viendront avec leurs étapes. `/mastersword reload` via `CommandRegistrationCallback`. `ItemStackMixin` sur `getMaxDamage()I` et `isDamageableItem()Z`. `MasterSwordItem` créée dès maintenant pour que le mixin teste un `instanceof` sans réveiller le `<clinit>` de `ModItems`. Deux pièges rencontrés : `optionalFieldOf` omet les valeurs par défaut à l'encodage (d'où deux codecs), et `CommandSourceStack.hasPermission(int)` n'existe plus en 26.2. |

@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import re.jerome.mastersword.command.MasterSwordCommand;
 import re.jerome.mastersword.config.MasterSwordConfig;
 import re.jerome.mastersword.registry.ModComponents;
+import re.jerome.mastersword.registry.ModEntityTypes;
 import re.jerome.mastersword.registry.ModItems;
 
 public class MasterSwordMod implements ModInitializer {
@@ -25,6 +26,7 @@ public class MasterSwordMod implements ModInitializer {
 		// config, so the config has to be loaded first.
 		MasterSwordConfig.load();
 		ModComponents.register();
+		ModEntityTypes.register();
 		ModItems.register();
 		MasterSwordCommand.register();
 		LOGGER.info("The Master Sword is waiting in the dark forest.");

@@ -28,16 +28,19 @@ import re.jerome.mastersword.MasterSwordMod;
 // one uses optionalFieldOf so a partial file still loads; the writing one uses
 // fieldOf, because optionalFieldOf *omits* a field whose value equals the default
 // and would hand the player an empty file with nothing to edit.
-public record MasterSwordConfig(ItemConfig item) {
-	public static final MasterSwordConfig DEFAULTS = new MasterSwordConfig(ItemConfig.DEFAULTS);
+public record MasterSwordConfig(ItemConfig item, LightWaveConfig lightWave) {
+	public static final MasterSwordConfig DEFAULTS = new MasterSwordConfig(ItemConfig.DEFAULTS, LightWaveConfig.DEFAULTS);
 
 	public static final Codec<MasterSwordConfig> READ_CODEC = codec(false);
 	private static final Codec<MasterSwordConfig> WRITE_CODEC = codec(true);
 
 	private static Codec<MasterSwordConfig> codec(boolean everyField) {
 		return RecordCodecBuilder.create(
-				i -> i.group(field(ItemConfig.codec(everyField), "item", ItemConfig.DEFAULTS, everyField)
-								.forGetter(MasterSwordConfig::item))
+				i -> i.group(
+								field(ItemConfig.codec(everyField), "item", ItemConfig.DEFAULTS, everyField)
+										.forGetter(MasterSwordConfig::item),
+								field(LightWaveConfig.codec(everyField), "light_wave", LightWaveConfig.DEFAULTS, everyField)
+										.forGetter(MasterSwordConfig::lightWave))
 						.apply(i, MasterSwordConfig::new));
 	}
 
@@ -51,7 +54,7 @@ public record MasterSwordConfig(ItemConfig item) {
 		"The Master Sword -- configuration.",
 		"Delete this file to regenerate it with the default values.",
 		"Reloaded live by /mastersword reload: max_durability, unbreakable,",
-		"full_regen_days.",
+		"full_regen_days, regen_starts_below, and every light_wave value.",
 		"Applied only on restart: attack_damage, attack_speed,",
 		"repairable_with_netherite_ingot -- they are baked onto the item when it",
 		"is registered.",
@@ -74,6 +77,17 @@ public record MasterSwordConfig(ItemConfig item) {
 		"rounds to whole ticks, so a very short full_regen_days with a high",
 		"max_durability ends up noticeably slower than asked. The defaults are",
 		"well inside that.",
+		"",
+		"regen_starts_below is a fraction of max durability: the sword only begins",
+		"mending once it drops to that share or below, and then goes back to full.",
+		"1.0 makes it always mend, 0.0 never.",
+		"",
+		"light_wave is the beam a fully charged swing throws. Every value here is",
+		"read live, so /mastersword reload applies them at once. damage_ratio is a",
+		"fraction of the sword melee damage; range and width are in blocks, speed",
+		"in blocks per tick. Set enabled to false to switch the beam off.",
+		"requires_full_health withholds the beam unless the player is at full",
+		"hearts.",
 	};
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -135,9 +149,10 @@ public record MasterSwordConfig(ItemConfig item) {
 			float attackSpeed,
 			int maxDurability,
 			float fullRegenDays,
+			float regenStartsBelow,
 			boolean unbreakable,
 			boolean repairableWithNetheriteIngot) {
-		public static final ItemConfig DEFAULTS = new ItemConfig(7.0F, -2.4F, 2031, 2.0F, false, false);
+		public static final ItemConfig DEFAULTS = new ItemConfig(7.0F, -2.4F, 2031, 2.0F, 0.5F, false, false);
 
 		// The bounds live in the schema. max_durability starts at 1, never 0:
 		// Item.getBarWidth divides by it.
@@ -160,6 +175,10 @@ public record MasterSwordConfig(ItemConfig item) {
 									field(Codec.floatRange(0.1F, 1000.0F), "full_regen_days",
 											DEFAULTS.fullRegenDays, everyField)
 											.forGetter(ItemConfig::fullRegenDays),
+									// 1.0 makes the sword always heal, 0.0 never.
+									field(Codec.floatRange(0.0F, 1.0F), "regen_starts_below",
+											DEFAULTS.regenStartsBelow, everyField)
+											.forGetter(ItemConfig::regenStartsBelow),
 									field(Codec.BOOL, "unbreakable",
 											DEFAULTS.unbreakable, everyField)
 											.forGetter(ItemConfig::unbreakable),
@@ -167,6 +186,54 @@ public record MasterSwordConfig(ItemConfig item) {
 											DEFAULTS.repairableWithNetheriteIngot, everyField)
 											.forGetter(ItemConfig::repairableWithNetheriteIngot))
 							.apply(i, ItemConfig::new));
+		}
+	}
+
+	public record LightWaveConfig(
+			boolean enabled,
+			float cooldownSeconds,
+			float range,
+			float speed,
+			float damageRatio,
+			float width,
+			int durabilityCost,
+			boolean requiresFullHealth) {
+		public static final LightWaveConfig DEFAULTS = new LightWaveConfig(true, 15.0F, 12.0F, 1.2F, 0.6F, 1.5F, 1, true);
+
+		static Codec<LightWaveConfig> codec(boolean everyField) {
+			return RecordCodecBuilder.create(
+					i -> i.group(
+									field(Codec.BOOL, "enabled",
+											DEFAULTS.enabled, everyField)
+											.forGetter(LightWaveConfig::enabled),
+									field(Codec.floatRange(0.0F, 3600.0F), "cooldown_seconds",
+											DEFAULTS.cooldownSeconds, everyField)
+											.forGetter(LightWaveConfig::cooldownSeconds),
+									// Range is what ends the wave, so it cannot be zero.
+									field(Codec.floatRange(1.0F, 256.0F), "range",
+											DEFAULTS.range, everyField)
+											.forGetter(LightWaveConfig::range),
+									// Above ~8 blocks a tick the wave steps over thin targets.
+									field(Codec.floatRange(0.1F, 8.0F), "speed",
+											DEFAULTS.speed, everyField)
+											.forGetter(LightWaveConfig::speed),
+									field(Codec.floatRange(0.0F, 10.0F), "damage_ratio",
+											DEFAULTS.damageRatio, everyField)
+											.forGetter(LightWaveConfig::damageRatio),
+									field(Codec.floatRange(0.1F, 16.0F), "width",
+											DEFAULTS.width, everyField)
+											.forGetter(LightWaveConfig::width),
+									field(Codec.intRange(0, 1000), "durability_cost",
+											DEFAULTS.durabilityCost, everyField)
+											.forGetter(LightWaveConfig::durabilityCost),
+									field(Codec.BOOL, "requires_full_health",
+											DEFAULTS.requiresFullHealth, everyField)
+											.forGetter(LightWaveConfig::requiresFullHealth))
+							.apply(i, LightWaveConfig::new));
+		}
+
+		public int cooldownTicks() {
+			return Math.round(this.cooldownSeconds * 20.0F);
 		}
 	}
 }

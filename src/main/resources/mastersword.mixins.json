@@ -6,7 +6,9 @@
 		"AnvilMenuMixin",
 		"EnchantCommandMixin",
 		"EnchantmentHelperMixin",
-		"ItemStackMixin"
+		"ItemStackMixin",
+		"PlayerAttackMixin",
+		"ServerPlayerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
