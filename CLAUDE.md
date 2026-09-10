@@ -17,11 +17,39 @@ générée en Dark Forest, gardée par un brouillard tant qu'elle n'est pas reti
 - **Ne rien coder de mémoire** sur les API Minecraft ou Fabric. Vérifier à
   `javap` sur les jars du cache Loom, ou dans les sources de `genSources`, avant
   d'écrire. Le savoir issu des versions 1.x est largement faux depuis 26.1.
-- Utiliser des **sous-agents** pour explorer le code source de Minecraft et de
-  Fabric (API, exemples, conventions) avant d'écrire du code neuf.
-- Utiliser un **sous-agent de vérification** dédié qui relit le code avant tout
-  commit.
 - Sur ce qui n'est pas confirmé dans `SPEC.md`, **proposer plutôt qu'imposer**.
+
+## Sous-agents : puissants et coûteux
+
+Ils ont attrapé de vrais bugs — le tag `#swords` manquant, une affirmation
+inversée sur le clamp de durabilité, une clé de config sans aucun effet. Mais ils
+représentent **80 % de la consommation de tokens** du projet : chacun repart de
+zéro, relance des dizaines de `javap` et regrepe les sources décompilées.
+
+D'où trois règles.
+
+**Explorer soi-même par défaut.** Un sous-agent d'exploration seulement quand la
+question résiste à quelques `javap`, à `../SETUP-MC-MODDING.md` et aux sources
+décompilées. Une signature à confirmer, un nom de classe à retrouver : ça se fait
+directement.
+
+**Demander des conclusions, pas des dumps.** Les prompts qui disent « donne le
+code intégral / verbatim / en entier » produisent des rapports de 60 à 75 Ko.
+Demander la signature exacte et la réponse à la question posée suffit presque
+toujours, et coûte cinq fois moins.
+
+**Faire relire ce qui le mérite.** Le sous-agent de vérification avant commit
+reste **obligatoire** pour : mixins, arithmétique, code réseau, persistance,
+worldgen, et tout ce qui touche à la durabilité ou aux dégâts. Il est **inutile**
+pour une texture, de la documentation, une traduction ou une clé de config
+triviale — dans ces cas, vérifier soi-même (build, chargement en jeu, en-tête du
+fichier) et **le dire explicitement** dans le message de rapport.
+
+## Sessions
+
+Repartir d'une **session neuve à chaque étape** du plan. Une conversation longue
+renvoie tout son contexte à chaque tour, ce qui coûte cher pour rien : `SPEC.md`
+est écrit précisément pour qu'une session neuve reprenne sans rien perdre.
 
 ## Tenue des fichiers
 
