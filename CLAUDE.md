@@ -26,7 +26,7 @@ inversée sur le clamp de durabilité, une clé de config sans aucun effet. Mais
 représentent **80 % de la consommation de tokens** du projet : chacun repart de
 zéro, relance des dizaines de `javap` et regrepe les sources décompilées.
 
-D'où trois règles.
+D'où quatre règles.
 
 **Explorer soi-même par défaut.** Un sous-agent d'exploration seulement quand la
 question résiste à quelques `javap`, à `../SETUP-MC-MODDING.md` et aux sources
@@ -44,6 +44,16 @@ worldgen, et tout ce qui touche à la durabilité ou aux dégâts. Il est **inut
 pour une texture, de la documentation, une traduction ou une clé de config
 triviale — dans ces cas, vérifier soi-même (build, chargement en jeu, en-tête du
 fichier) et **le dire explicitement** dans le message de rapport.
+
+**Choisir le modèle selon l'enjeu.** Exploration, recherche de signature,
+inventaire de fichiers : **Sonnet** — même travail, environ cinq fois moins lourd
+sur le quota. Relecture avant commit dans les catégories obligatoires ci-dessus :
+**Opus**, parce que repérer une absence (le tag `#swords`) ou une clé branchée en
+apparence seulement (`light_wave.width`) est ce qui se dégrade en premier sur un
+modèle plus léger. Un agent d'exploration rend **la ligne `javap` brute**, jamais
+un résumé en prose : une signature inventée se voit alors au premier coup d'œil,
+au lieu de me faire coder faux et reboucler — ce qui coûterait plus cher que
+l'économie.
 
 ## Sessions
 
