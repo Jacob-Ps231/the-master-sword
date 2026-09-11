@@ -29,6 +29,11 @@ public class PedestalRenderer implements BlockEntityRenderer<PedestalBlockEntity
 	// tip to the left. 135 lands the tip at 270 degrees: straight down, into the
 	// stone. Measured from the texture and confirmed against what the first build
 	// actually drew, not assumed.
+	//
+	// The pedestal takes any #swords item, so this stays keyed to the sprite
+	// convention every vanilla sword follows. Our own 3D model is built upright
+	// instead, and its FIXED transform carries the 45 degrees that puts it back
+	// on that convention -- see master_sword_3d.json.
 	private static final float BLADE_DOWN = 135.0F;
 
 	private final ItemModelResolver itemModelResolver;

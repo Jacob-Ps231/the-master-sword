@@ -26,3 +26,5 @@ Thumbs.db
 
 # Claude Code (local, per-machine)
 .claude/settings.local.json
+
+*.zip
