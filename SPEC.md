@@ -4,10 +4,10 @@ Document vivant. Il décrit **ce qu'on construit** et **les décisions prises**.
 Les instructions de travail permanentes sont dans `CLAUDE.md`, les pièges de la
 machine et de Minecraft 26.2 dans `../SETUP-MC-MODDING.md`.
 
-Statut : **étapes 1 à 6 faites et testées en jeu** — l'épée, sa configuration, sa
-régénération, le cumul d'enchantements et la vague de lumière. Restent le socle,
-la génération et le brouillard (§8).
-Dernière mise à jour : 10/09/2026.
+Statut : **étapes 1 à 7 faites** — l'épée, sa configuration, sa régénération, le
+cumul d'enchantements, la vague de lumière et le socle. Restent la génération et
+le brouillard (§8).
+Dernière mise à jour : 11/09/2026.
 
 Conventions de ce fichier :
 
@@ -621,18 +621,46 @@ Commencer par du JSON pur, et ne passer au code que si nécessaire.
 
 ### 4.2 Forme ✅ (« bloc ou demi-bloc + petit décor »)
 
-🔷 Proposition :
+**Le socle est fait (étape 7).**
 
 - Un **socle** : bloc custom `master_sword_pedestal`, en pierre sombre, forme de
   demi-dalle épaisse avec une fente centrale. Il porte un `BlockEntity` qui
-  connaît l'état de l'épée.
+  connaît l'état de l'épée. Dureté 25 / résistance 1200, pioche obligatoire,
+  `noOcclusion()` puisque la forme est en deux boîtes (1→15 sur 4 de haut, puis
+  3→13 sur 8). Modèle JSON texturé en `polished_deepslate` / `deepslate_tiles` /
+  `chiseled_deepslate` — une texture propre viendra à l'étape 10 sans toucher au
+  code.
+- Le socle porte une propriété **`facing`** sur quatre directions, posée comme un
+  four ou une table de craft : la lame fait face au joueur au moment de la pose.
+  La pierre étant symétrique, l'orientation ne se voit **que** dans l'épée —
+  c'est ce qui permet d'aligner une rangée de socles aux lames différemment
+  tournées. `rotate` et `mirror` sont implémentés, sans quoi un socle placé dans
+  une structure NBT ignorerait la rotation de celle-ci (étape 8).
 - L'épée est **rendue par le BlockEntity** (ni cadre d'item, ni entité posée) :
-  plantée verticalement, légère oscillation, quelques particules.
+  plantée verticalement, pointe dans la fente, **immobile**. Le rendu réutilise
+  le modèle d'item, donc la texture de Jérôme et le reflet d'enchantement
+  suivent tout seuls.
+
+🔷 Détail cosmétique connu, non corrigé : la lumière de l'épée est échantillonnée
+à la position du socle, alors que la lame occupe surtout le bloc du dessus. Ne se
+voit que si les deux cases ont des niveaux de lumière différents.
+
+⚠️ Le modèle d'item est une plaque fine : une épée immobile est vue **de profil**,
+donc presque comme un trait, depuis l'axe perpendiculaire à sa lame. Aucune
+orientation fixe n'évite ça sous tous les angles. Les deux sorties, si ça gêne :
+lui rendre une rotation lente, ou lui donner un vrai modèle 3D à l'étape 10.
+
+⚠️ Piège d'orientation, trouvé en jeu puis mesuré : une sprite d'épée court en
+diagonale, **pointe en haut à droite**, soit 45°. Mais la transformation `FIXED`
+du modèle d'item applique un demi-tour autour de Y, qui reflète ça à **135°** —
+d'où une rotation de 45° qui couche la lame à l'horizontale au lieu de la
+redresser. La bonne valeur est **135°**, qui amène la pointe à 270° : droit vers
+le bas.
 - Décor : 5×5 à 7×7 blocs — racines, mousse, pierres moussues, un soupçon de
   lumière au sol. Une structure NBT posée par un `single_pool_element`, pour
   rester éditable en jeu au block-editor.
 
-### 4.3 Retrait et remise de l'épée ✅
+### 4.3 Retrait et remise de l'épée ✅ — **fait (étape 7)**
 
 - Clic droit sur le socle à main vide → l'épée est retirée et donnée au joueur.
   **Aucune condition** : pas de niveau requis, pas de quête, pas de prérequis.
@@ -640,14 +668,57 @@ Commencer par du JSON pur, et ne passer au code que si nécessaire.
 - L'épée peut être **remise** dans le socle (clic droit avec l'épée en main).
   Elle s'y replante et se rend visible, mais **le brouillard ne revient pas**.
 - Le socle reste en place dans tous les cas, vide ou occupé.
+- Le socle est cassable à la **pioche en diamant** (tag `needs_diamond_tool`), pas
+  à n'importe quelle pioche : `requiresCorrectToolForDrops()` seul, sans tag de
+  palier, laisse une pioche en bois suffire.
+- Le socle accepte **n'importe quelle épée** de `#minecraft:swords`, pas
+  seulement l'Épée de Légende (demande de Jérôme, 11/09/2026) : un socle avec une
+  épée en fer ou en diamant est une décoration utile. L'Épée de Légende est dans
+  ce tag depuis l'étape 2, donc aucun cas particulier ; les épées d'autres mods
+  correctement taguées passent aussi. Tout ce qui n'est pas une épée retombe sur
+  le comportement normal de l'objet en main.
 
-🔷 Conséquence : l'état persistant du socle a besoin de **deux** informations
+  Deux garde-fous que ça impose, invisibles au test :
+  - la **régénération** ne tourne que si la pile est l'Épée de Légende, sans quoi
+    le socle poserait le composant d'horodatage sur une épée en fer et se
+    mettrait à la réparer ;
+  - le drapeau **« brouillard consommé »** ne bascule que quand c'est l'Épée de
+    Légende qui sort.
+- Si l'inventaire est plein au moment du retrait, l'épée est posée **sur le
+  socle** (`Block.popResource` à la position du bloc) et non aux pieds du joueur.
+  `placeItemBackInInventory` passe par `Player.drop`, qui la fait tomber dans les
+  herbes hors du champ de vision : jamais détruite, mais introuvable.
+
+Conséquence : l'état persistant du socle a besoin de **deux** informations
 distinctes — « une épée est-elle posée ? » et « le brouillard a-t-il déjà été
-consommé ? ». La seconde est irréversible.
+consommé ? ». La seconde est irréversible. Les deux sont dans le `BlockEntity`
+(`sword` par `ItemStack.OPTIONAL_CODEC`, `fog_consumed` en booléen) et partent
+au client par `getUpdateTag` / `getUpdatePacket`, sans paquet custom.
 
-🔷 Le socle est cassable à la pioche et se ramasse. S'il est cassé alors que
-l'épée est dedans, l'épée tombe au sol. Le drapeau « brouillard consommé » suit
-alors le monde, pas le bloc (§5).
+⚠️ La `SavedData` globale annoncée en §5 **n'existe pas encore** : `fogConsumed`
+ne vit que dans le `BlockEntity`, donc casser puis reposer un socle rendrait le
+brouillard. Elle arrive à l'étape 9, quand il y aura un consommateur ; écrite
+maintenant, elle serait du code que rien ne lit.
+
+Le socle est cassable à la pioche et se ramasse. S'il est cassé alors que l'épée
+est dedans, l'épée tombe au sol — depuis `PedestalBlockEntity.preRemoveSideEffects`,
+le hook d'où le lutrin lâche son livre, et **non** depuis
+`affectNeighborsAfterRemoval` qui tourne une fois le bloc déjà parti. Casser le
+socle ne compte pas comme dégainer : le drapeau de brouillard ne bouge pas.
+
+**L'épée continue de se régénérer dans le socle** (choix de Jérôme, 11/09/2026) :
+`Item.inventoryTick` n'est jamais appelé pour une pile tenue par un
+`BlockEntity`, donc le socle pilote lui-même `MasterSwordItem.regenerate`, qui
+renvoie désormais un booléen pour ne resynchroniser que quand la durabilité a
+réellement bougé.
+
+⚠️ Le chaînage des deux clics droits tient à **une seule valeur** :
+`ServerPlayerGameMode` n'appelle `useWithoutItem` que si `useItemOn` a renvoyé un
+`InteractionResult.TryEmptyHandInteraction`. `PASS` **ne retombe pas** dessus.
+Tous les cas que le socle ne revendique pas renvoient donc
+`TRY_WITH_EMPTY_HAND` — c'est aussi le défaut vanilla, et c'est ce qui fait que
+le socle se comporte comme un coffre : son interaction l'emporte sur la pose d'un
+bloc contre lui, et s'accroupir contourne les deux.
 
 ---
 
@@ -836,9 +907,9 @@ src/main/java/re/jerome/mastersword/
 ├─ config/MasterSwordConfig  Codec, chargement, sauvegarde normalisée ✔ créé
 ├─ command/MasterSwordCommand  /mastersword reload ✔ créé
 ├─ registry/                 ModItems ✔, ModItemIds ✔, ModComponents ✔,
-│                            puis ModBlocks, ModBlockEntities, ModEntities
+│                            ModEntityTypes ✔, ModBlocks ✔, ModBlockEntities ✔
 ├─ item/MasterSwordItem      ✔ régénération ; l'attaque chargée à l'étape 6
-├─ block/PedestalBlock, PedestalBlockEntity
+├─ block/PedestalBlock ✔, PedestalBlockEntity ✔ socle
 ├─ entity/LightWaveEntity    ✔ créée
 ├─ worldgen/                 StructurePlacement custom (le reste en JSON data/)
 └─ mixin/                    ItemStackMixin ✔ durabilité configurable,
@@ -848,7 +919,7 @@ src/main/java/re/jerome/mastersword/
 
 src/client/java/re/jerome/mastersword/client/
 ├─ MasterSwordClient         point d'entrée client (ClientModInitializer) ✔ créé
-├─ PedestalRenderer
+├─ PedestalRenderer         ✔ créé (+ PedestalRenderState)
 ├─ LightWaveRenderer      ✔ créé (+ LightWaveRenderState)
 └─ FogHandler
 ```
@@ -891,8 +962,11 @@ Aucun de ces points ne doit être codé de mémoire. Sous-agent + `javap` +
    la pose d'une structure NBT en 26.2.
 7. L'API de rendu du brouillard côté client en 26.2 (elle bouge souvent) et la
    façon propre de la moduler depuis un mod.
-8. Rendu d'un `BlockEntity` et d'une entité projectile plate — le mémo signale
-   qu'un `RenderPipeline` n'a pas besoin d'être enregistré.
+8. ~~Rendu d'un `BlockEntity` et d'une entité projectile plate~~ — **fait les
+   10 et 11/09/2026**. Les deux suivent le même patron : `createRenderState` /
+   `extractRenderState` / `submit`. Un item se dessine par
+   `ItemModelResolver.updateForTopItem(..., null, 0)` puis
+   `ItemStackRenderState.submit(...)`, avec le garde `isEmpty()` de vanilla.
 9. `SavedData` en 26.2 : signature, `Codec`, et enregistrement par dimension.
 
 ---
@@ -910,7 +984,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 4 | Régénération | composant custom, décompte sur l'horloge du monde, remise à zéro au combat | **fait** 07/09/2026 |
 | 5 | Enchantements | mixin d'exclusivité, test Sharpness + Smite | **fait** 09/09/2026 |
 | 6 | Vague de lumière | entité, rendu, dégâts, cooldown 15 s, équilibrage | **fait** 10/09/2026 |
-| 7 | Socle | bloc, BlockEntity, rendu de l'épée plantée, retrait et remise | à faire |
+| 7 | Socle | bloc, BlockEntity, rendu de l'épée plantée, retrait et remise | **fait** 11/09/2026 |
 | 8 | Génération | structure NBT, `structure_set` calqué sur le manoir, `exclusion_zone` | à faire |
 | 9 | Brouillard | synchro serveur → client, courbe 50 → 10 blocs, disparition définitive | à faire |
 | 10 | Finitions | sons, particules, advancement de retrait, traductions fr/en | à faire |
@@ -933,6 +1007,8 @@ brancher après coup obligerait à repasser sur chaque fichier.
 
 | Date | Décision |
 | --- | --- |
+| 11/09/2026 | **Étape 7 faite.** `PedestalBlock extends BaseEntityBlock` + `PedestalBlockEntity`, rendu de l'épée par `BlockEntityRendererRegistry` (Fabric : `BlockEntityRenderers` n'a pas de `register` en 26.2). Deux pièges trouvés en lisant le bytecode vanilla plutôt qu'en supposant : `useWithoutItem` n'est atteint que si `useItemOn` renvoie `TRY_WITH_EMPTY_HAND`, **`PASS` ne retombe pas dessus** ; et les contenus se lâchent depuis `BlockEntity.preRemoveSideEffects`, appelé par `LevelChunk.setBlockState`, et non depuis `affectNeighborsAfterRemoval` où vanilla ne fait qu'avertir les voisins. Choix de Jérôme : **le socle soigne l'épée**, d'où `MasterSwordItem.regenerate` rendu public et renvoyant un booléen pour ne resynchroniser que sur changement réel. Textures vanilla pour l'instant. Pas de section de config : le socle n'a aucune valeur à régler. |
+| 11/09/2026 | Ajustements après essai en jeu. **Orientation** : propriété `facing` sur quatre directions, pour aligner une rangée de socles aux lames différemment tournées — la pierre est symétrique, l'orientation ne se voit que dans l'épée. **N'importe quelle épée** de `#minecraft:swords` est acceptée, d'où deux garde-fous sur la régénération et sur le drapeau de brouillard (§4.3). L'épée est **immobile et plantée** au lieu de flotter en tournant : la bonne rotation est **135°** et non 45°, la transformation `FIXED` appliquant déjà un demi-tour autour de Y. Inventaire plein au retrait : l'épée est posée sur le socle et non aux pieds du joueur. |
 | 06/09/2026 | Spécification initiale rédigée. `CLAUDE.md` allégé : les specs vivent ici. |
 | 10/09/2026 | **Étape 6 faite.** `LightWaveEntity extends Projectile`, tirée par **deux** mixins — `ServerPlayerMixin` sur `swing` pour le balayage à vide, `PlayerAttackMixin` avec `@Local` sur `fullStrengthAttack` pour le coup qui touche. Motif : `Player.attack` appelle `onAttack()` — donc remet `attackStrengthTicker` à zéro — **avant** de calculer `fullStrengthAttack`, donc la charge est illisible depuis `postHurtEnemy`. Rendu par un quad plat émissif, couché parallèlement au sol. Section `light_wave` dans la config. Question ouverte n° 1 fermée : **tirer** la vague remet le compteur de régénération à zéro. |
 | 10/09/2026 | Corrections de relecture sur l'étape 6. **`width` ne servait à rien** : la surcharge courte de `getManyEntityHitResult` ignore l'`AABB` pour le test de touche et retombe sur `computeMargin` (≤ 0,3), la vague était une ligne — passée à la surcharge à neuf paramètres. **La condition de pleine vie refusait le tir à 19,6 PV** alors que le HUD montre dix cœurs pleins : comparaison passée en `Mth.ceil`, comme le HUD. Plus le culling du quad (2,8 blocs contre une hitbox de 0,6), `shouldBeSaved → false` avec plafond de 200 ticks, et l'exclusion explicite du lanceur. Sons d'impact ajoutés au passage, son du tir monté à 1,5. Deux conséquences assumées par Jérôme : la vague ignore armure et bouclier, et miner avec l'épée en tire une. |

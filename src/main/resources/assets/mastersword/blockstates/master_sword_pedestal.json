@@ -1,0 +1,8 @@
+{
+	"variants": {
+		"facing=north": {"model": "mastersword:block/master_sword_pedestal"},
+		"facing=east":  {"model": "mastersword:block/master_sword_pedestal", "y": 90},
+		"facing=south": {"model": "mastersword:block/master_sword_pedestal", "y": 180},
+		"facing=west":  {"model": "mastersword:block/master_sword_pedestal", "y": 270}
+	}
+}

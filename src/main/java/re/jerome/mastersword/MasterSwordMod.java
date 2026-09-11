@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import re.jerome.mastersword.command.MasterSwordCommand;
 import re.jerome.mastersword.config.MasterSwordConfig;
+import re.jerome.mastersword.registry.ModBlockEntities;
+import re.jerome.mastersword.registry.ModBlocks;
 import re.jerome.mastersword.registry.ModComponents;
 import re.jerome.mastersword.registry.ModEntityTypes;
 import re.jerome.mastersword.registry.ModItems;
@@ -28,6 +30,10 @@ public class MasterSwordMod implements ModInitializer {
 		ModComponents.register();
 		ModEntityTypes.register();
 		ModItems.register();
+		// ModBlocks first: the block entity type is built from the set of blocks it
+		// is valid for, so the block has to exist by then.
+		ModBlocks.register();
+		ModBlockEntities.register();
 		MasterSwordCommand.register();
 		LOGGER.info("The Master Sword is waiting in the dark forest.");
 	}

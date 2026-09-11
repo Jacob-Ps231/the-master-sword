@@ -61,7 +61,20 @@ public class MasterSwordItem extends Item {
 		regenerate(stack, level);
 	}
 
-	private static void regenerate(ItemStack stack, ServerLevel level) {
+	/**
+	 * Advances the healing of one stack by one tick.
+	 *
+	 * Public because the pedestal has to call it too: Item.inventoryTick never fires
+	 * for a stack held by a block entity, so a sword resting on its pedestal would
+	 * otherwise be the one place it does not mend.
+	 *
+	 * @return whether the stack was actually written to. The pedestal resynchronises
+	 *     to its watching clients on true, and true is rare -- a point of durability
+	 *     takes about 24 seconds at the defaults -- so a pedestal is quiet almost
+	 *     every tick. inventoryTick ignores the answer: a stack in an inventory is
+	 *     already synchronised by the container.
+	 */
+	public static boolean regenerate(ItemStack stack, ServerLevel level) {
 		int damage = stack.getDamageValue();
 		Long last = stack.get(ModComponents.LAST_COMBAT_USE);
 
@@ -70,9 +83,10 @@ public class MasterSwordItem extends Item {
 			// banking days of credit it would spend on its first scratch.
 			if (last != null) {
 				stack.remove(ModComponents.LAST_COMBAT_USE);
+				return true;
 			}
 
-			return;
+			return false;
 		}
 
 		long now = level.getOverworldClockTime();
@@ -85,17 +99,17 @@ public class MasterSwordItem extends Item {
 			int maxDamage = stack.getMaxDamage();
 			int remaining = maxDamage - damage;
 			if (remaining > MasterSwordConfig.get().item().regenStartsBelow() * maxDamage) {
-				return;
+				return false;
 			}
 
 			stack.set(ModComponents.LAST_COMBAT_USE, now);
-			return;
+			return true;
 		}
 
 		if (last > now) {
 			// Happens after /time set moves the clock backwards.
 			stack.set(ModComponents.LAST_COMBAT_USE, now);
-			return;
+			return true;
 		}
 
 		long fullRegenTicks = fullRegenTicks();
@@ -103,7 +117,7 @@ public class MasterSwordItem extends Item {
 		long elapsed = now - last;
 		long healed = (long) maxDamage * elapsed / fullRegenTicks;
 		if (healed <= 0) {
-			return;
+			return false;
 		}
 
 		// Only the time actually converted into durability is consumed; the
@@ -125,6 +139,7 @@ public class MasterSwordItem extends Item {
 		long consumed = (healed * fullRegenTicks + maxDamage - 1) / maxDamage;
 		stack.setDamageValue((int) Math.max(0, damage - healed));
 		stack.set(ModComponents.LAST_COMBAT_USE, last + consumed);
+		return true;
 	}
 
 	private static long fullRegenTicks() {
