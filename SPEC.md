@@ -704,6 +704,21 @@ code**, seulement d'autres `.nbt` et des entrées dans le pool. Côté outillage
 `tools/structure/build_structure.js` est écrit pour une structure unique ; il
 faudra le paramétrer pour qu'il produise plusieurs fichiers.
 
+**Ce que chaque variante doit tenir**, sous peine de casser en silence une
+mécanique décidée ailleurs dans ce document. Les auto-contrôles en fin de script
+couvrent déjà les quatre points : quand il produira plusieurs fichiers, il faudra
+**les faire tourner par fichier**, pas une fois pour toutes.
+
+| Invariant | Pourquoi | Se voit comment si c'est raté |
+| --- | --- | --- |
+| Le socle porte `shrine: 1b` dans son `nbt` | c'est le seul endroit d'où vient le drapeau (§5) | **aucun brouillard**, jamais, sans un mot dans le log |
+| Le socle porte aussi `sword` et `fog_consumed: 0b` | l'épée est plantée dès la génération, sans code | socle vide à la sortie de terre |
+| Emprise **entièrement pavée**, aucun bloc de `#minecraft:dirt` | `surface_structures` passe avant `vegetal_decoration` | un chêne noir pousse au travers, quelques jours plus tard |
+| Clairière assez large pour un tronc 2×2 | le dark oak est un arbre à quatre pieds | un tronc contre le socle |
+
+Le `template_pool` ne valide rien de tout ça : une variante fautive se génère
+sans erreur, et c'est en jeu, des semaines après, qu'on s'en aperçoit.
+
 ### 4.3 Retrait et remise de l'épée ✅ — **fait (étape 7)**
 
 - Clic droit sur le socle à main vide → l'épée est retirée et donnée au joueur.
