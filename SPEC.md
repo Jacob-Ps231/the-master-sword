@@ -487,6 +487,16 @@ toutes les quinze secondes passées à miner. Assumé le 10/09/2026.
   épée par biome, au maximum.
 - Aucune autre structure à moins de **120 blocs** en surface. Les structures
   souterraines sont ignorées pour ce calcul.
+  ⚠️ **Tenu pour le manoir seulement**, depuis l'étape 8. `exclusion_zone`
+  n'accepte qu'**un** `other_set`, donc l'option A retenue ne couvre que
+  `minecraft:woodland_mansions`. Le **portail en ruine**, seule autre structure
+  de surface possible en Dark Forest, peut apparaître plus près — c'est le
+  compromis assumé de l'option A ci-dessous. Et **aucune structure ajoutée par
+  un autre mod n'est vue** : chaque `structure_set` tire sa grille
+  indépendamment et rien ne teste la collision entre sets — sur les 20 sets
+  vanilla, un seul déclare une exclusion. L'exclusion étant à sens unique, c'est
+  toujours notre épée qui cède ; nous ne faisons jamais disparaître la structure
+  d'autrui. Lever complètement la limite demanderait l'option B.
 
 Mise en œuvre : structure JSON vanilla (`worldgen/structure` + `structure_set`),
 sans code pour le placement de base. **Vérifié dans le jar 26.2 le 06/09/2026 —
@@ -564,7 +574,10 @@ coordonnées.
 Conséquence à assumer, c'est le mot *maximum* de la spec qui l'autorise : la
 plupart des Dark Forests n'auront pas d'épée. Baisser `spacing` dans la config
 (§6) la rend plus fréquente, au prix du risque d'en voir deux dans une grande
-forêt. 🔷 `spacing` reste donc configurable, avec 80 par défaut.
+forêt. 🔷 La valeur retenue est **72**, celle du paragraphe de décision ci-dessus
+et du journal du 06/09 — une mention « 80 par défaut » traînait ici, reste d'avant
+cette décision, corrigée le 12/09. Rendre `spacing` configurable supposerait le
+placement custom de l'option B : un JSON de worldgen ne lit pas la config du mod.
 
 #### Les 120 blocs : `exclusion_zone` existe en vanilla
 
@@ -619,6 +632,17 @@ Il en faut donc **deux**, et vanilla n'en donne qu'une. 🔷 Deux options :
 🔷 Recommandation : **A pour l'étape 8, B si le test en jeu montre que ça gêne.**
 Commencer par du JSON pur, et ne passer au code que si nécessaire.
 
+**A est en place depuis le 12/09/2026.** Si B est repris un jour, une idée est
+apparue en chemin qui vaut mieux que la liste d'exclusions prévue ici : plutôt
+que d'énumérer des `other_set`, **itérer sur tous les `structure_set` du
+registre** et refuser notre chunk si l'un d'eux a un candidat trop proche.
+`hasStructureChunkInRange` étant public, c'est faisable sans mixin, et ça couvre
+d'un coup le portail en ruine **et les structures des autres mods**, sans avoir à
+connaître leurs identifiants. Prévoir un garde-fou : céder devant tout ferait
+disparaître l'épée dans un monde très chargé en mods de structures — n'exclure
+que les sets dont les structures sont en `surface_structures`, ou renoncer à
+l'exclusion après un nombre d'essais.
+
 ### 4.2 Forme ✅ (« bloc ou demi-bloc + petit décor »)
 
 **Le socle est fait (étape 7).**
@@ -627,9 +651,10 @@ Commencer par du JSON pur, et ne passer au code que si nécessaire.
   demi-dalle épaisse avec une fente centrale. Il porte un `BlockEntity` qui
   connaît l'état de l'épée. Dureté 25 / résistance 1200, pioche obligatoire,
   `noOcclusion()` puisque la forme est en deux boîtes (1→15 sur 4 de haut, puis
-  3→13 sur 8). Modèle JSON texturé en `polished_deepslate` / `deepslate_tiles` /
-  `chiseled_deepslate` — une texture propre viendra à l'étape 10 sans toucher au
-  code.
+  3→13 sur 8). Modèle JSON texturé en `mossy_stone_bricks` (socle) / `stone_bricks` (fût) /
+  `chiseled_stone_bricks` (fente) — le deepslate d'origine jurait avec la ruine
+  de pierre grise de l'étape 8. Une texture propre viendra à l'étape 10 sans
+  toucher au code.
 - Le socle porte une propriété **`facing`** sur quatre directions, posée comme un
   four ou une table de craft : la lame fait face au joueur au moment de la pose.
   La pierre étant symétrique, l'orientation ne se voit **que** dans l'épée —
@@ -958,8 +983,11 @@ Aucun de ces points ne doit être codé de mémoire. Sous-agent + `javap` +
    deux items identiques~~ — **fait le 06/09/2026**, et corrigé : ce n'est pas
    l'absence qui compte, il faut écraser `REPAIRABLE`. Voir §2.2.
 6. ~~Format 26.2 de `structure_set` et espacement inter-sets~~ — **fait le
-   06/09/2026**, voir §4.1. Reste à vérifier : le format de `template_pool` et
-   la pose d'une structure NBT en 26.2.
+   06/09/2026**, voir §4.1. ~~Reste à vérifier : le format de `template_pool` et
+   la pose d'une structure NBT en 26.2.~~ — **fait le 12/09/2026** (étape 8) :
+   `.nbt` sous `data/<ns>/structure/`, `DataVersion` 4903, et **`processors`
+   obligatoire** dans un `single_pool_element`. Détails dans
+   `../SETUP-MC-MODDING.md` §4.
 7. L'API de rendu du brouillard côté client en 26.2 (elle bouge souvent) et la
    façon propre de la moduler depuis un mod.
 8. ~~Rendu d'un `BlockEntity` et d'une entité projectile plate~~ — **fait les
@@ -985,7 +1013,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 5 | Enchantements | mixin d'exclusivité, test Sharpness + Smite | **fait** 09/09/2026 |
 | 6 | Vague de lumière | entité, rendu, dégâts, cooldown 15 s, équilibrage | **fait** 10/09/2026 |
 | 7 | Socle | bloc, BlockEntity, rendu de l'épée plantée, retrait et remise | **fait** 11/09/2026 |
-| 8 | Génération | structure NBT, `structure_set` calqué sur le manoir, `exclusion_zone` | à faire |
+| 8 | Génération | structure NBT, `structure_set` calqué sur le manoir, `exclusion_zone` | **fait** 12/09/2026 |
 | 9 | Brouillard | synchro serveur → client, courbe 50 → 10 blocs, disparition définitive | à faire |
 | 10 | Finitions | sons, particules, advancement de retrait, traductions fr/en, modèle 3D de l'épée **(fait 11/09/2026)** | à faire |
 
@@ -1007,7 +1035,8 @@ brancher après coup obligerait à repasser sur chaque fichier.
 
 | Date | Décision |
 | --- | --- |
-| 11/09/2026 | **Apparence de l'épée : modèle 3D maison v3, 22 cubes** (avance sur l'étape 10). Le mod embarque **uniquement des assets originaux** : `models/item/master_sword_3d.json` + sa texture 64×64, sculptés dans Blockbench via son plugin MCP. Proportions relevées sur une référence fournie par Jérôme : **lame 69 % de la longueur totale, garde 10 %, manche 21 %** — les versions précédentes plafonnaient à 58 % de lame pour une garde deux fois trop large. La lame gagne sa longueur en descendant le pommeau à **y = −4** : le format autorise −16..32, et passer sous zéro rallonge sans rien sacrifier. Deux erreurs corrigées au passage, toutes deux répétées : **les ailes de la garde pointent vers le bas**, pas vers le haut ; et un motif peint sur la face de la lame est **invisible**, car l'arête centrale est en relief en z et le recouvre — il va sur l'arête. L'or est réduit à la gemme de garde et deux accents de ricasso, le reste est violet et vert. Les v1 (13 cubes) et v2 (26) sont conservées dans `tools/model/`. ⚠️ **Le modèle de Moubarack sort du dépôt** : il est livré comme **resource pack séparé** (`../MasterSword-Moubarack-ResourcePack/`) qui surcharge `master_sword_3d` au même chemin — pack activé, on voit Moubarack ; désactivé, le modèle maison. Rien à modifier dans le mod pour basculer, et **la question §9 n°2 est close : le dépôt est publiable**. `pack_format` de 26.2 = **88** (`resource_major` du `version.json` client). `BLADE_DOWN` **reste à 135** : l'avoir passé à 180 pour un modèle vertical avait cassé le rendu de toutes les épées vanilla, que le socle accepte aussi via `#swords` — c'est au modèle de se plier à la convention du sprite, pas au socle de se plier à un modèle. |
+| 12/09/2026 | **Étape 8 faite : la structure se génère.** Tout en données, **zéro ligne de Java** — c'est l'option A de §4.1. Quatre fichiers : le `structure_set` (spacing **72**, separation 20, `triangular`, salt 48271393, `exclusion_zone` vers `minecraft:woodland_mansions` à `chunk_count: 8` = 128 blocs), la `structure` jigsaw de surface, le `template_pool` à un seul `single_pool_element`, et un tag de biome sur `minecraft:dark_forest`. Le `.nbt` est **produit par script** (`tools/structure/`, avec un encodeur NBT maison, relu après écriture) plutôt qu'enregistré depuis un structure block : il reste diffable et reproductible, et rouvrable en jeu pour retouche. **Le socle porte ses données de `BlockEntity` dans le `.nbt`** — comme les coffres vanilla portent leur loot table — donc l'épée est plantée dès la génération, sans une ligne de code. Deux pièges payés comptant. **`processors` est obligatoire** dans un `single_pool_element` : l'omettre ne fait rien au démarrage mais **crashe à la création du monde** (`No key processors in MapLike`). Et **`surface_structures` s'exécute avant `vegetal_decoration`** : les arbres sont posés *après* la structure et poussaient au travers — creuser de l'air n'y change rien, seul un sol non enracinable le fait. D'où un sol **100 % pierre** (aucun bloc de `#minecraft:dirt`) et une clairière élargie à 9×9, un tronc de dark oak faisant 2×2. Le décor gagne au passage 8 blocs différents au lieu de 2, par tirage pondéré déterministe. Socle re-texturé en `stone_bricks` / `mossy_stone_bricks` / `chiseled_stone_bricks` : le deepslate jurait avec la ruine grise (§4.2 mis à jour). Contradiction de §4.1 levée : `spacing` vaut **72**, et il ne sera configurable qu'avec l'option B. **Relecture Opus** : a attrapé une contradiction entre le commentaire et le code — le bord irrégulier sautait des cases au hasard, qui gardaient l'herbe d'origine et laissaient **6 carrés 2×2 de sol nu dans l'emprise**, le plus proche à 4,3 blocs du socle, de quoi enraciner le dark oak qu'on prétendait avoir exclu. Corrigé : l'emprise 9×9 est **entièrement pavée**, l'irrégularité vient de la matière et non de trous, et le script vérifie les 81 cases à chaque génération. §4.1 reformulée dans la foulée : les 120 blocs ne sont tenus que pour le manoir, ni pour le portail en ruine ni pour les structures des autres mods. |
+| 11/09/2026 | **Apparence de l'épée : modèle 3D maison v3, 22 cubes** (avance sur l'étape 10). Le mod embarque **uniquement des assets originaux** : `models/item/master_sword_3d.json` + sa texture 64×64, sculptés dans Blockbench via son plugin MCP. Proportions relevées sur une référence fournie par Jérôme : **lame 69 % de la longueur totale, garde 10 %, manche 21 %** — les versions précédentes plafonnaient à 58 % de lame pour une garde deux fois trop large. La lame gagne sa longueur en descendant le pommeau à **y = −4** : le format autorise −16..32, et passer sous zéro rallonge sans rien sacrifier. Deux erreurs corrigées au passage, toutes deux répétées : **les ailes de la garde pointent vers le bas**, pas vers le haut ; et un motif peint sur la face de la lame est **invisible**, car l'arête centrale est en relief en z et le recouvre — il va sur l'arête. L'or est réduit à la gemme de garde et deux accents de ricasso, le reste est violet et vert. Les v1 (13 cubes) et v2 (26) sont conservées dans `tools/model/`. ⚠️ **Le modèle de Moubarack sort du dépôt** : il est livré comme **resource pack séparé** (`../MasterSword-Moubarack-Mauve/` aux couleurs d’origine, `-Bleu/` pour la version recolorée) qui surcharge `master_sword_3d` au même chemin — pack activé, on voit Moubarack ; désactivé, le modèle maison. Rien à modifier dans le mod pour basculer, et **la question §9 n°2 est close : le dépôt est publiable**. `pack_format` de 26.2 = **88** (`resource_major` du `version.json` client). `BLADE_DOWN` **reste à 135** : l'avoir passé à 180 pour un modèle vertical avait cassé le rendu de toutes les épées vanilla, que le socle accepte aussi via `#swords` — c'est au modèle de se plier à la convention du sprite, pas au socle de se plier à un modèle. |
 | 11/09/2026 | **Étape 7 faite.** `PedestalBlock extends BaseEntityBlock` + `PedestalBlockEntity`, rendu de l'épée par `BlockEntityRendererRegistry` (Fabric : `BlockEntityRenderers` n'a pas de `register` en 26.2). Deux pièges trouvés en lisant le bytecode vanilla plutôt qu'en supposant : `useWithoutItem` n'est atteint que si `useItemOn` renvoie `TRY_WITH_EMPTY_HAND`, **`PASS` ne retombe pas dessus** ; et les contenus se lâchent depuis `BlockEntity.preRemoveSideEffects`, appelé par `LevelChunk.setBlockState`, et non depuis `affectNeighborsAfterRemoval` où vanilla ne fait qu'avertir les voisins. Choix de Jérôme : **le socle soigne l'épée**, d'où `MasterSwordItem.regenerate` rendu public et renvoyant un booléen pour ne resynchroniser que sur changement réel. Textures vanilla pour l'instant. Pas de section de config : le socle n'a aucune valeur à régler. |
 | 11/09/2026 | Ajustements après essai en jeu. **Orientation** : propriété `facing` sur quatre directions, pour aligner une rangée de socles aux lames différemment tournées — la pierre est symétrique, l'orientation ne se voit que dans l'épée. **N'importe quelle épée** de `#minecraft:swords` est acceptée, d'où deux garde-fous sur la régénération et sur le drapeau de brouillard (§4.3). L'épée est **immobile et plantée** au lieu de flotter en tournant : la bonne rotation est **135°** et non 45°, la transformation `FIXED` appliquant déjà un demi-tour autour de Y. Inventaire plein au retrait : l'épée est posée sur le socle et non aux pieds du joueur. |
 | 06/09/2026 | Spécification initiale rédigée. `CLAUDE.md` allégé : les specs vivent ici. |

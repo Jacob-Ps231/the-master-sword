@@ -1,0 +1,19 @@
+{
+	"placement": {
+		"type": "minecraft:random_spread",
+		"spacing": 72,
+		"separation": 20,
+		"spread_type": "triangular",
+		"salt": 48271393,
+		"exclusion_zone": {
+			"other_set": "minecraft:woodland_mansions",
+			"chunk_count": 8
+		}
+	},
+	"structures": [
+		{
+			"structure": "mastersword:master_sword",
+			"weight": 1
+		}
+	]
+}

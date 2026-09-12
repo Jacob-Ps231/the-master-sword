@@ -1,10 +1,10 @@
 {
 	"parent": "minecraft:block/block",
 	"textures": {
-		"base": "minecraft:block/polished_deepslate",
-		"shaft": "minecraft:block/deepslate_tiles",
-		"slot": "minecraft:block/chiseled_deepslate",
-		"particle": "minecraft:block/polished_deepslate"
+		"base": "minecraft:block/mossy_stone_bricks",
+		"shaft": "minecraft:block/stone_bricks",
+		"slot": "minecraft:block/chiseled_stone_bricks",
+		"particle": "minecraft:block/stone_bricks"
 	},
 	"elements": [
 		{
