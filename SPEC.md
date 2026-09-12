@@ -4,10 +4,10 @@ Document vivant. Il décrit **ce qu'on construit** et **les décisions prises**.
 Les instructions de travail permanentes sont dans `CLAUDE.md`, les pièges de la
 machine et de Minecraft 26.2 dans `../SETUP-MC-MODDING.md`.
 
-Statut : **étapes 1 à 7 faites** — l'épée, sa configuration, sa régénération, le
-cumul d'enchantements, la vague de lumière et le socle. Restent la génération et
-le brouillard (§8).
-Dernière mise à jour : 11/09/2026.
+Statut : **étapes 1 à 9 faites** — l'épée, sa configuration, sa régénération, le
+cumul d'enchantements, la vague de lumière, le socle, la génération et le
+brouillard. Restent les finitions (§8, étape 10).
+Dernière mise à jour : 12/09/2026.
 
 Conventions de ce fichier :
 
@@ -732,16 +732,19 @@ faudra le paramétrer pour qu'il produise plusieurs fichiers.
   `placeItemBackInInventory` passe par `Player.drop`, qui la fait tomber dans les
   herbes hors du champ de vision : jamais détruite, mais introuvable.
 
-Conséquence : l'état persistant du socle a besoin de **deux** informations
-distinctes — « une épée est-elle posée ? » et « le brouillard a-t-il déjà été
-consommé ? ». La seconde est irréversible. Les deux sont dans le `BlockEntity`
-(`sword` par `ItemStack.OPTIONAL_CODEC`, `fog_consumed` en booléen) et partent
-au client par `getUpdateTag` / `getUpdatePacket`, sans paquet custom.
+Conséquence : l'état persistant du socle a besoin de **trois** informations
+distinctes — « une épée est-elle posée ? », « le brouillard a-t-il déjà été
+consommé ? » et, depuis l'étape 9, « ce socle est-il celui que la génération a
+posé ? ». La deuxième est irréversible, la troisième ne s'écrit qu'une fois, dans
+le `.nbt` de la structure. Les trois sont dans le `BlockEntity` (`sword` par
+`ItemStack.OPTIONAL_CODEC`, `fog_consumed` et `shrine` en booléens) et partent au
+client par `getUpdateTag` / `getUpdatePacket`, sans paquet custom.
 
-⚠️ La `SavedData` globale annoncée en §5 **n'existe pas encore** : `fogConsumed`
-ne vit que dans le `BlockEntity`, donc casser puis reposer un socle rendrait le
-brouillard. Elle arrive à l'étape 9, quand il y aura un consommateur ; écrite
-maintenant, elle serait du code que rien ne lit.
+⚠️ La `SavedData` globale que §5 annonçait **n'a finalement pas été écrite** :
+l'étape 9 a réglé le problème autrement, par un drapeau `shrine` que seul le
+`.nbt` de la structure pose. Casser le socle du sanctuaire fait perdre le
+drapeau, donc le brouillard ne revient pas — et un socle posé à la main n'en a
+jamais eu. Voir §5.
 
 Le socle est cassable à la pioche et se ramasse. S'il est cassé alors que l'épée
 est dedans, l'épée tombe au sol — depuis `PedestalBlockEntity.preRemoveSideEffects`,
@@ -772,22 +775,76 @@ bloc contre lui, et s'accroupir contourne les deux.
 - Disparaît **définitivement** au premier retrait — remettre l'épée ne le
   ramène pas.
 
-🔷 Proposition :
+**Implémenté à l'étape 9**, et **sans une ligne de code réseau** : le socle
+envoie déjà tout son état sauvegardé au client depuis l'étape 7
+(`getUpdateTag` → `saveCustomOnly`), donc les deux drapeaux dont le brouillard a
+besoin sont dans le `BlockEntity` que le client tient en main.
 
-- Effet purement client, calculé à chaque frame : distance du joueur au socle
-  actif le plus proche → densité de brouillard interpolée. À 50 blocs, 0 % ; à
-  **10 blocs**, densité maximale. 🔷 Courbe quadratique, plus dramatique que
-  linéaire. Les deux rayons sont configurables.
-- 🔷 Teinte gris-vert froide, légèrement lumineuse, cohérente avec le Dark
-  Forest.
-- Le client doit connaître la position et l'état des socles : le `BlockEntity`
-  synchronise son état, et le client tient la liste des socles des chunks
-  chargés. 50 blocs tiennent dans 4 chunks, donc le chargement normal suffit à
-  toute distance de rendu jouable — c'est le bénéfice secondaire du passage de
-  100 à 50 blocs, plus besoin d'un paquet de synchronisation à longue portée.
-- L'état « brouillard consommé » est persistant côté monde : dans le
-  `BlockEntity`, **et** dans une `SavedData` globale, puisque le socle peut être
-  cassé et reposé (§4.3).
+#### Quel socle mérite un brouillard
+
+Le socle porte un troisième champ, **`shrine`**, écrit **uniquement par le `.nbt`
+de la structure** — il n'a aucun setter en Java. Le brouillard est dû si
+`shrine && !fog_consumed`.
+
+Ce drapeau remplace la `SavedData` globale que ce document proposait, et il
+règle un cas que la `SavedData` ne voyait pas : sans lui, replanter l'épée dans
+un socle posé chez soi lèverait un brouillard permanent sur la base. Il règle
+aussi celui qu'elle visait — casser le socle du sanctuaire fait perdre le
+drapeau avec lui, donc le brouillard ne revient pas — sans rien avoir à
+persister à part le socle lui-même. Décidé avec Jérôme le 12/09/2026.
+
+⚠️ Conséquence : un sanctuaire généré **avant** l'étape 9 n'a pas le drapeau et
+reste sans brouillard. Le champ absent vaut `false`, donc rien ne casse.
+
+#### Le rendu
+
+- Effet purement client, calculé à chaque image : distance de la caméra au
+  sanctuaire dû le plus proche → densité interpolée. À 50 blocs, 0 % ; à
+  **10 blocs**, densité maximale. Les deux rayons sont configurables, ainsi que
+  `visibility` — ce qu'on voit encore au cœur du brouillard, gardé à 12 blocs
+  pour que le socle reste visible et cliquable quand on est dessus.
+
+  ⚠️ **La fermeture est géométrique, et sa rampe est en racine carrée.** Deux
+  essais en jeu ont été nécessaires, chacun corrigeant une erreur de fait.
+
+  D'abord, un brouillard se lit comme un **rapport** de distances, pas comme une
+  différence : en interpolant droit vers `visibility`, on laissait la portée à 91
+  blocs quand le joueur était à 20 blocs du socle — la moitié de la courbe, et
+  rien de visible sous une canopée où on ne voit déjà pas à 30 blocs. Tout
+  l'effet se tassait sur les dix derniers blocs. D'où une division de la portée à
+  chaque pas plutôt qu'une soustraction, et l'abandon de la courbe quadratique
+  qui aggravait le même défaut.
+
+  Ensuite, **la valeur qu'on divise vaut 1024, pas la distance de rendu.**
+  `EnvironmentAttributes.FOG_END_DISTANCE` a **1024** pour défaut, et **aucun
+  biome vanilla ne le surcharge** — les deux marais ne touchent qu'au brouillard
+  *sous-marin* ; la distance de rendu, elle, vit dans l'**autre** paire de bornes
+  du shader, que celui-ci combine par un `max`.
+  Diviser 1024 demande une rampe plus rapide que diviser 192 : sans la racine
+  carrée, la portée restait à 36 blocs avec le joueur à 20 blocs, soit une
+  brume légère et non un lieu gardé. La racine est l'inverse exact du carré par
+  lequel cette courbe avait commencé.
+
+  Portée obtenue, aux valeurs par défaut : **111 blocs à 40, 44 à 30, 22 à 20, 16
+  à 15, 12 au socle** — l'épée passe de 36 % à 92 % de brume entre 40 et 20
+  blocs, culmine vers 15, puis se dégage un peu à l'arrivée. Le sanctuaire sort
+  du brouillard au lieu d'y être noyé. Validé en jeu par Jérôme le 12/09/2026.
+- La densité est **lissée sur le temps de jeu**, environ une seconde de fondu,
+  sur le modèle du brouillard de pluie vanilla. Elle sert trois fois : pas
+  d'apparition en une image quand le sanctuaire entre dans les chunks chargés,
+  pas de saut quand on tire l'épée, pas de clignotement si un chunk se recharge.
+- Teinte gris-vert froide (`#8FA89A` par défaut), cohérente avec le Dark Forest.
+- Le client tient la liste des socles des chunks chargés, alimentée par
+  `ClientBlockEntityEvents`. 50 blocs tiennent dans 4 chunks, donc le chargement
+  normal suffit à toute distance de rendu jouable — c'est le bénéfice secondaire
+  du passage de 100 à 50 blocs, plus besoin d'un paquet à longue portée.
+
+⚠️ **Le brouillard ne peut qu'ajouter à celui du jeu, jamais l'éclaircir.** Les
+distances passent par un `Math.min` contre ce que vanilla a posé, et la
+recoloration est **suspendue** sous Cécité, sous Obscurité et devant une barre de
+boss : y étaler un gris-vert pâle rendrait une partie de la vue que ces effets
+sont censés retirer. Tête sous l'eau ou dans la lave, le brouillard du fluide
+fait autorité et le nôtre s'efface.
 
 ---
 
@@ -839,7 +896,7 @@ Découpage prévu :
 | `item` ✔ | `attack_damage`, `attack_speed`, `max_durability`, `full_regen_days`, `regen_starts_below`, `unbreakable`, `repairable_with_netherite_ingot` |
 | `light_wave` ✔ | `enabled`, `cooldown_seconds`, `range`, `speed`, `damage_ratio`, `width`, `durability_cost`, `requires_full_health` — toutes relues à chaud |
 | `structure` | activée, `spacing`, `separation`, distance minimale aux autres structures (120), biome cible |
-| `fog` | activé, rayon extérieur (50), rayon de densité maximale (10), couleur, intensité maximale |
+| `fog` ✔ | `enabled`, `outer_radius` (50), `inner_radius` (10), `visibility` (12), `color` (`#RRGGBB`) — relue à chaque image |
 
 **Trois limites à connaître avant de promettre « tout est configurable à
 chaud »**, les deux premières désormais vérifiées et traitées :
@@ -964,8 +1021,15 @@ src/client/java/re/jerome/mastersword/client/
 ├─ MasterSwordClient         point d'entrée client (ClientModInitializer) ✔ créé
 ├─ PedestalRenderer         ✔ créé (+ PedestalRenderState)
 ├─ LightWaveRenderer      ✔ créé (+ LightWaveRenderState)
-└─ FogHandler
+├─ FogHandler               ✔ créé
+└─ mixin/FogRendererMixin   ✔ créé — config client séparée
 ```
+
+Les mixins **client** ont leur propre `mastersword.client.mixins.json`, dans
+`src/client/resources/`, déclaré dans `fabric.mod.json` avec
+`{"config": …, "environment": "client"}`. Les source sets étant séparés, un mixin
+visant une classe `@Environment(CLIENT)` ne peut pas vivre dans la config
+commune : elle est chargée aussi côté serveur, où la classe cible n'existe pas.
 
 Enregistrements dans des classes à **initialisation statique** — le mémo §8
 insiste sur l'ordre d'initialisation, et une particule doit être enregistrée des
@@ -1006,14 +1070,23 @@ Aucun de ces points ne doit être codé de mémoire. Sous-agent + `javap` +
    `.nbt` sous `data/<ns>/structure/`, `DataVersion` 4903, et **`processors`
    obligatoire** dans un `single_pool_element`. Détails dans
    `../SETUP-MC-MODDING.md` §4.
-7. L'API de rendu du brouillard côté client en 26.2 (elle bouge souvent) et la
-   façon propre de la moduler depuis un mod.
+7. ~~L'API de rendu du brouillard côté client en 26.2 et la façon propre de la
+   moduler depuis un mod~~ — **fait le 12/09/2026** (étape 9). Il n'y a **aucune
+   API Fabric** : les 66 jars du cache ne contiennent pas une classe qui mentionne
+   `Fog`. Le point d'accroche est `FogRenderer.setupFog`, **public** et qui
+   **renvoie** le `FogData` de l'image ; un `@Inject` en `RETURN` suffit, sans
+   variable locale ni ordinal. Détails dans `../SETUP-MC-MODDING.md` §4.
 8. ~~Rendu d'un `BlockEntity` et d'une entité projectile plate~~ — **fait les
    10 et 11/09/2026**. Les deux suivent le même patron : `createRenderState` /
    `extractRenderState` / `submit`. Un item se dessine par
    `ItemModelResolver.updateForTopItem(..., null, 0)` puis
    `ItemStackRenderState.submit(...)`, avec le garde `isEmpty()` de vanilla.
-9. `SavedData` en 26.2 : signature, `Codec`, et enregistrement par dimension.
+9. ~~`SavedData` en 26.2 : signature, `Codec`, et enregistrement par dimension~~
+   — **répondu le 12/09/2026**, et **pas utilisé** : l'étape 9 s'en est passée
+   (§5). La réponse est notée pour le jour où elle servira :
+   `new SavedDataType<>(Identifier, Supplier<T>, Codec<T>, DataFixTypes)` puis
+   `ServerLevel.getDataStorage().computeIfAbsent(TYPE)`. ⚠️ `DimensionDataStorage`
+   **n'existe plus** en 26.2, c'est `SavedDataStorage`.
 
 ---
 
@@ -1032,7 +1105,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 6 | Vague de lumière | entité, rendu, dégâts, cooldown 15 s, équilibrage | **fait** 10/09/2026 |
 | 7 | Socle | bloc, BlockEntity, rendu de l'épée plantée, retrait et remise | **fait** 11/09/2026 |
 | 8 | Génération | structure NBT, `structure_set` calqué sur le manoir, `exclusion_zone` | **fait** 12/09/2026 |
-| 9 | Brouillard | synchro serveur → client, courbe 50 → 10 blocs, disparition définitive | à faire |
+| 9 | Brouillard | drapeau `shrine`, courbe 50 → 10 blocs, disparition définitive | **fait** 12/09/2026 |
 | 10 | Finitions | sons, particules, advancement de retrait, traductions fr/en, modèle 3D de l'épée **(fait 11/09/2026)** | à faire |
 
 La config passe en étape 3, avant tout ce qui a des valeurs à régler : la
@@ -1053,6 +1126,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 
 | Date | Décision |
 | --- | --- |
+| 12/09/2026 | **Étape 9 faite : le brouillard.** Deux surprises, toutes deux dans le sens du moins de code. **Aucun paquet réseau n'a été écrit** : `getUpdateTag` renvoie `saveCustomOnly` depuis l'étape 7, donc l'état complet du socle était déjà côté client — la « synchro serveur → client » annoncée au plan était faite d'avance. Et **la `SavedData` de §5 a été abandonnée** au profit d'un drapeau **`shrine`**, posé uniquement par le `.nbt` de la structure et sans setter en Java (choix de Jérôme). Elle ne voyait pas le cas qui compte : replanter l'épée dans un socle posé chez soi aurait levé un brouillard permanent sur la base. Le drapeau règle les deux, et meurt avec le socle qu'on casse. Côté rendu, **Fabric n'a aucune API de brouillard** — les 66 jars du cache passés en revue, zéro classe qui mentionne `Fog` — donc un mixin sur `FogRenderer.setupFog`, public et qui **renvoie** le `FogData` : injection en `RETURN`, ni `@Local` ni ordinal, une config de mixins client séparée pour les source sets. Tout est en `Math.min` contre ce que vanilla a posé : le brouillard ne peut qu'ajouter. **Relecture Opus** : a attrapé un bug qui rendait la fonctionnalité **totalement inopérante**. Filtrer sur `isShrine()` dans l'écouteur `BLOCK_ENTITY_LOAD` ne marche pas — Fabric tire l'événement depuis `LevelChunk.setBlockEntity`, au `Map.put`, soit l'offset 5 de `lambda$replaceWithPacketData$0`, alors que `loadWithComponents` ne lit le NBT qu'à l'offset 52 : au moment de l'événement **tous les champs valent encore leur défaut**. Vérifié au bytecode avant correction. Le tri se fait désormais par image, après chargement. Deux autres prises au passage : la recoloration n'était pas gardée et **rendait de la vue sous Cécité** (les distances, elles, étaient inattaquables), et `remove(clé)` au déchargement pouvait effacer l'entrée du socle **suivant** à la même position, vanilla posant le nouveau avant de retirer l'ancien. **Deux essais en jeu pour calibrer la courbe**, chacun sur une erreur de fait plutôt que de code. Un brouillard se lit comme un **rapport** de distances : interpoler droit laissait la portée à 91 blocs quand le joueur était à 20 blocs du socle, invisible sous la canopée — d'où une division de la portée à chaque pas, et l'abandon de la courbe quadratique de §5 qui aggravait le même défaut. Puis **`FOG_END_DISTANCE` vaut 1024 et non la distance de rendu** (celle-ci est dans l'autre paire de bornes du shader, combinée par un `max`), et aucun biome vanilla ne la surcharge : diviser 1024 demande une rampe en **racine carrée** — l'inverse exact du carré de départ — sans quoi l'épée restait brumée à 55 % seulement à 20 blocs. Relevé au passage et corrigé dans le code comme dans le mémo : le shader lit `d <= fogStart` comme **aucun** brouillard, donc un `start` qui dépasse `end` ne l'affaiblit pas, il le supprime. Rendu validé par Jérôme le 12/09/2026. |
 | 12/09/2026 | **Étape 8 faite : la structure se génère.** Tout en données, **zéro ligne de Java** — c'est l'option A de §4.1. Quatre fichiers : le `structure_set` (spacing **72**, separation 20, `triangular`, salt 48271393, `exclusion_zone` vers `minecraft:woodland_mansions` à `chunk_count: 8` = 128 blocs), la `structure` jigsaw de surface, le `template_pool` à un seul `single_pool_element`, et un tag de biome sur `minecraft:dark_forest`. Le `.nbt` est **produit par script** (`tools/structure/`, avec un encodeur NBT maison, relu après écriture) plutôt qu'enregistré depuis un structure block : il reste diffable et reproductible, et rouvrable en jeu pour retouche. **Le socle porte ses données de `BlockEntity` dans le `.nbt`** — comme les coffres vanilla portent leur loot table — donc l'épée est plantée dès la génération, sans une ligne de code. Deux pièges payés comptant. **`processors` est obligatoire** dans un `single_pool_element` : l'omettre ne fait rien au démarrage mais **crashe à la création du monde** (`No key processors in MapLike`). Et **`surface_structures` s'exécute avant `vegetal_decoration`** : les arbres sont posés *après* la structure et poussaient au travers — creuser de l'air n'y change rien, seul un sol non enracinable le fait. D'où un sol **100 % pierre** (aucun bloc de `#minecraft:dirt`) et une clairière élargie à 9×9, un tronc de dark oak faisant 2×2. Le décor gagne au passage 8 blocs différents au lieu de 2, par tirage pondéré déterministe. Socle re-texturé en `stone_bricks` / `mossy_stone_bricks` / `chiseled_stone_bricks` : le deepslate jurait avec la ruine grise (§4.2 mis à jour). Contradiction de §4.1 levée : `spacing` vaut **72**, et il ne sera configurable qu'avec l'option B. **Relecture Opus** : a attrapé une contradiction entre le commentaire et le code — le bord irrégulier sautait des cases au hasard, qui gardaient l'herbe d'origine et laissaient **6 carrés 2×2 de sol nu dans l'emprise**, le plus proche à 4,3 blocs du socle, de quoi enraciner le dark oak qu'on prétendait avoir exclu. Corrigé : l'emprise 9×9 est **entièrement pavée**, l'irrégularité vient de la matière et non de trous, et le script vérifie les 81 cases à chaque génération. §4.1 reformulée dans la foulée : les 120 blocs ne sont tenus que pour le manoir, ni pour le portail en ruine ni pour les structures des autres mods. |
 | 11/09/2026 | **Apparence de l'épée : modèle 3D maison v3, 22 cubes** (avance sur l'étape 10). Le mod embarque **uniquement des assets originaux** : `models/item/master_sword_3d.json` + sa texture 64×64, sculptés dans Blockbench via son plugin MCP. Proportions relevées sur une référence fournie par Jérôme : **lame 69 % de la longueur totale, garde 10 %, manche 21 %** — les versions précédentes plafonnaient à 58 % de lame pour une garde deux fois trop large. La lame gagne sa longueur en descendant le pommeau à **y = −4** : le format autorise −16..32, et passer sous zéro rallonge sans rien sacrifier. Deux erreurs corrigées au passage, toutes deux répétées : **les ailes de la garde pointent vers le bas**, pas vers le haut ; et un motif peint sur la face de la lame est **invisible**, car l'arête centrale est en relief en z et le recouvre — il va sur l'arête. L'or est réduit à la gemme de garde et deux accents de ricasso, le reste est violet et vert. Les v1 (13 cubes) et v2 (26) sont conservées dans `tools/model/`. ⚠️ **Le modèle de Moubarack sort du dépôt** : il est livré comme **resource pack séparé** (`../MasterSword-Moubarack-Mauve/` aux couleurs d’origine, `-Bleu/` pour la version recolorée) qui surcharge `master_sword_3d` au même chemin — pack activé, on voit Moubarack ; désactivé, le modèle maison. Rien à modifier dans le mod pour basculer, et **la question §9 n°2 est close : le dépôt est publiable**. `pack_format` de 26.2 = **88** (`resource_major` du `version.json` client). `BLADE_DOWN` **reste à 135** : l'avoir passé à 180 pour un modèle vertical avait cassé le rendu de toutes les épées vanilla, que le socle accepte aussi via `#swords` — c'est au modèle de se plier à la convention du sprite, pas au socle de se plier à un modèle. |
 | 11/09/2026 | **Étape 7 faite.** `PedestalBlock extends BaseEntityBlock` + `PedestalBlockEntity`, rendu de l'épée par `BlockEntityRendererRegistry` (Fabric : `BlockEntityRenderers` n'a pas de `register` en 26.2). Deux pièges trouvés en lisant le bytecode vanilla plutôt qu'en supposant : `useWithoutItem` n'est atteint que si `useItemOn` renvoie `TRY_WITH_EMPTY_HAND`, **`PASS` ne retombe pas dessus** ; et les contenus se lâchent depuis `BlockEntity.preRemoveSideEffects`, appelé par `LevelChunk.setBlockState`, et non depuis `affectNeighborsAfterRemoval` où vanilla ne fait qu'avertir les voisins. Choix de Jérôme : **le socle soigne l'épée**, d'où `MasterSwordItem.regenerate` rendu public et renvoyant un booléen pour ne resynchroniser que sur changement réel. Textures vanilla pour l'instant. Pas de section de config : le socle n'a aucune valeur à régler. |

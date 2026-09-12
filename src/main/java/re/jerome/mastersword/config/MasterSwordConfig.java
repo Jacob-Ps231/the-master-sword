@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
 import com.mojang.serialization.JsonOps;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -28,8 +29,9 @@ import re.jerome.mastersword.MasterSwordMod;
 // one uses optionalFieldOf so a partial file still loads; the writing one uses
 // fieldOf, because optionalFieldOf *omits* a field whose value equals the default
 // and would hand the player an empty file with nothing to edit.
-public record MasterSwordConfig(ItemConfig item, LightWaveConfig lightWave) {
-	public static final MasterSwordConfig DEFAULTS = new MasterSwordConfig(ItemConfig.DEFAULTS, LightWaveConfig.DEFAULTS);
+public record MasterSwordConfig(ItemConfig item, LightWaveConfig lightWave, FogConfig fog) {
+	public static final MasterSwordConfig DEFAULTS =
+			new MasterSwordConfig(ItemConfig.DEFAULTS, LightWaveConfig.DEFAULTS, FogConfig.DEFAULTS);
 
 	public static final Codec<MasterSwordConfig> READ_CODEC = codec(false);
 	private static final Codec<MasterSwordConfig> WRITE_CODEC = codec(true);
@@ -40,7 +42,9 @@ public record MasterSwordConfig(ItemConfig item, LightWaveConfig lightWave) {
 								field(ItemConfig.codec(everyField), "item", ItemConfig.DEFAULTS, everyField)
 										.forGetter(MasterSwordConfig::item),
 								field(LightWaveConfig.codec(everyField), "light_wave", LightWaveConfig.DEFAULTS, everyField)
-										.forGetter(MasterSwordConfig::lightWave))
+										.forGetter(MasterSwordConfig::lightWave),
+								field(FogConfig.codec(everyField), "fog", FogConfig.DEFAULTS, everyField)
+										.forGetter(MasterSwordConfig::fog))
 						.apply(i, MasterSwordConfig::new));
 	}
 
@@ -88,6 +92,18 @@ public record MasterSwordConfig(ItemConfig item, LightWaveConfig lightWave) {
 		"in blocks per tick. Set enabled to false to switch the beam off.",
 		"requires_full_health withholds the beam unless the player is at full",
 		"hearts.",
+		"",
+		"fog is the mist guarding a sword still in its shrine. It is purely",
+		"client-side: this section is read by your own game and imposes nothing on",
+		"a server, so set it to your own taste and your own eyesight. It thickens",
+		"from outer_radius down to inner_radius, where visibility is how far you",
+		"can still see -- keep it above 8 or so, or the pedestal itself is hard to",
+		"find once you are standing at it. color is #RRGGBB. The fog never makes",
+		"the game's own fog thinner: underwater, in lava or under Blindness what",
+		"you get is whatever is denser, and those last two keep their own colour.",
+		"Read at every frame, so /mastersword reload applies the whole section at",
+		"once in single player. On a server that command reloads the server's file,",
+		"not yours: restart the game to pick up your own fog changes.",
 	};
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -234,6 +250,75 @@ public record MasterSwordConfig(ItemConfig item, LightWaveConfig lightWave) {
 
 		public int cooldownTicks() {
 			return Math.round(this.cooldownSeconds * 20.0F);
+		}
+	}
+
+	/**
+	 * The fog guarding a shrine (SPEC 5). Client-side only: it decides what one
+	 * player sees and nothing else, which is why every bound here is generous --
+	 * a value that only makes the view ugly is the player's business.
+	 */
+	public record FogConfig(
+			boolean enabled,
+			float outerRadius,
+			float innerRadius,
+			float visibility,
+			int color) {
+		public static final FogConfig DEFAULTS = new FogConfig(true, 50.0F, 10.0F, 12.0F, 0x8FA89A);
+
+		// Written and read as #RRGGBB. A colour is the one value in this file
+		// nobody can proofread as a decimal number, and comapFlatMap keeps a
+		// mistyped one from taking the whole section down with it: the error names
+		// the key, and only the colour falls back.
+		private static final Codec<Integer> COLOR = Codec.STRING.comapFlatMap(
+				text -> {
+					String digits = text.startsWith("#") ? text.substring(1) : text;
+					if (digits.length() != 6) {
+						return DataResult.error(() -> "not a #RRGGBB colour: " + text);
+					}
+
+					try {
+						return DataResult.success(Integer.parseInt(digits, 16));
+					} catch (NumberFormatException e) {
+						return DataResult.error(() -> "not a #RRGGBB colour: " + text);
+					}
+				},
+				value -> String.format("#%06X", value & 0xFFFFFF));
+
+		static Codec<FogConfig> codec(boolean everyField) {
+			return RecordCodecBuilder.create(
+					i -> i.group(
+									field(Codec.BOOL, "enabled",
+											DEFAULTS.enabled, everyField)
+											.forGetter(FogConfig::enabled),
+									// Beyond the render distance the shrine is not loaded
+									// anyway, so there is no point offering more (SPEC 5).
+									field(Codec.floatRange(1.0F, 256.0F), "outer_radius",
+											DEFAULTS.outerRadius, everyField)
+											.forGetter(FogConfig::outerRadius),
+									field(Codec.floatRange(0.0F, 256.0F), "inner_radius",
+											DEFAULTS.innerRadius, everyField)
+											.forGetter(FogConfig::innerRadius),
+									// Never zero: this is a sight distance, and zero would
+									// mean a screen of flat colour with the pedestal in it.
+									field(Codec.floatRange(1.0F, 512.0F), "visibility",
+											DEFAULTS.visibility, everyField)
+											.forGetter(FogConfig::visibility),
+									field(COLOR, "color",
+											DEFAULTS.color, everyField)
+											.forGetter(FogConfig::color))
+							.apply(i, FogConfig::new));
+		}
+
+		/**
+		 * How far the fog fades over, guarded against a file where inner_radius has
+		 * been set at or above outer_radius. The codec cannot express "this field
+		 * must exceed that one", so the division protects itself instead: the fog
+		 * then switches on at its full strength the moment the shrine is in range,
+		 * which is a legible outcome rather than a division by zero.
+		 */
+		public float fadeSpan() {
+			return Math.max(0.001F, this.outerRadius - this.innerRadius);
 		}
 	}
 }

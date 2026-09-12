@@ -17,13 +17,16 @@ import net.minecraft.world.level.storage.ValueOutput;
 import re.jerome.mastersword.item.MasterSwordItem;
 import re.jerome.mastersword.registry.ModBlockEntities;
 
-// What the pedestal remembers. Two pieces of state, and they are independent on
-// purpose (SPEC 4.3): whether a sword is currently planted, and whether the fog
-// has already been spent. The first goes back and forth as the sword is taken and
-// returned; the second only ever flips once, and never back.
+// What the pedestal remembers. Three pieces of state, independent on purpose
+// (SPEC 4.3 and 5): whether a sword is currently planted, whether the fog has
+// already been spent, and whether this pedestal is the one world generation put
+// there. The first goes back and forth as the sword is taken and returned; the
+// second only ever flips once, and never back; the third is written by the
+// structure file and never changes afterwards.
 public class PedestalBlockEntity extends BlockEntity {
 	private ItemStack sword = ItemStack.EMPTY;
 	private boolean fogConsumed;
+	private boolean shrine;
 
 	public PedestalBlockEntity(BlockPos pos, BlockState state) {
 		super(ModBlockEntities.PEDESTAL, pos, state);
@@ -39,6 +42,25 @@ public class PedestalBlockEntity extends BlockEntity {
 
 	public boolean isFogConsumed() {
 		return this.fogConsumed;
+	}
+
+	/**
+	 * Whether this pedestal is the one the world generated, the only kind the fog
+	 * belongs to (SPEC 5).
+	 *
+	 * There is no setter on purpose: the flag comes from the structure file and
+	 * from nowhere else. A pedestal the player places is a plain one, so planting
+	 * the Master Sword back home never raises a fog over the base -- and breaking
+	 * the shrine loses the flag with it, which is what makes the fog gone for good
+	 * without anything else having to remember it.
+	 */
+	public boolean isShrine() {
+		return this.shrine;
+	}
+
+	/** Whether a fog is owed here: a shrine no one has drawn the sword from yet. */
+	public boolean guardsFog() {
+		return this.shrine && !this.fogConsumed;
 	}
 
 	/** Plants a sword. The stack is taken as-is, enchantments and damage included. */
@@ -125,6 +147,7 @@ public class PedestalBlockEntity extends BlockEntity {
 		// which would make the empty pedestal the special case on both sides.
 		output.store("sword", ItemStack.OPTIONAL_CODEC, this.sword);
 		output.putBoolean("fog_consumed", this.fogConsumed);
+		output.putBoolean("shrine", this.shrine);
 	}
 
 	@Override
@@ -132,9 +155,12 @@ public class PedestalBlockEntity extends BlockEntity {
 		super.loadAdditional(input);
 		this.sword = input.read("sword", ItemStack.OPTIONAL_CODEC).orElse(ItemStack.EMPTY);
 		this.fogConsumed = input.getBooleanOr("fog_consumed", false);
+		// Absent means a plain pedestal: a hand-placed one, and every pedestal
+		// generated before the flag existed.
+		this.shrine = input.getBooleanOr("shrine", false);
 	}
 
-	// The client needs both: the stack to draw it, and the fog flag for step 9.
+	// The client needs all three: the stack to draw it, and the two flags for the fog.
 	// saveCustomOnly sends exactly what saveAdditional wrote, so there is no custom
 	// packet to write and no second format to keep in step with the first.
 	@Override

@@ -118,10 +118,15 @@ for (const [x, z] of floor) {
 // The pedestal carries its block entity straight in the file -- the same way
 // vanilla chests carry their loot table. This is what puts the sword in the
 // stone at world generation rather than needing code to fill it afterwards.
+//
+// shrine is what tells the fog this pedestal is the real one (SPEC 5). Only a
+// generated pedestal carries it, so a pedestal the player places -- including one
+// they plant the Master Sword back into -- never raises a fog.
 put(CX, 1, CZ, 'mastersword:master_sword_pedestal', { facing: 'north' }, comp({
   id: s('mastersword:master_sword_pedestal'),
   sword: comp({ id: s('mastersword:master_sword'), count: i(1) }),
   fog_consumed: b(0),
+  shrine: b(1),
 }));
 
 // --- assemble -------------------------------------------------------------
@@ -150,6 +155,9 @@ else {
   if (JSON.stringify(pedestal.pos) !== JSON.stringify([CX, 1, CZ])) problems.push('position du socle');
   if (back.palette[pedestal.state].Properties?.facing !== 'north') problems.push('facing');
   if (pedestal.nbt?.sword?.id !== 'mastersword:master_sword') problems.push('épée absente du block entity');
+  // Without this byte the pedestal generates as an ordinary one and no fog ever
+  // appears -- a failure that is invisible everywhere except in game.
+  if (pedestal.nbt?.shrine !== 1) problems.push('drapeau shrine absent');
 }
 const soil = back.palette.map((p) => p.Name).filter((n) => DIRT.includes(n));
 if (soil.length) problems.push(`sol enracinable: ${soil.join(', ')}`);

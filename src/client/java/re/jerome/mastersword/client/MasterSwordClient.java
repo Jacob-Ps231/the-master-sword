@@ -14,6 +14,10 @@ public class MasterSwordClient implements ClientModInitializer {
 		// BlockEntityRenderers has no register in 26.2 -- vanilla builds the map
 		// itself -- so this goes through Fabric.
 		BlockEntityRendererRegistry.register(ModBlockEntities.PEDESTAL, PedestalRenderer::new);
+		// Starts listening for shrines coming in and out of the loaded chunks. The
+		// fog itself is applied from FogRendererMixin, at the tail of the frame's
+		// fog setup.
+		FogHandler.register();
 		MasterSwordMod.LOGGER.info("The Master Sword client is ready.");
 	}
 }
