@@ -4,9 +4,10 @@ Document vivant. Il décrit **ce qu'on construit** et **les décisions prises**.
 Les instructions de travail permanentes sont dans `CLAUDE.md`, les pièges de la
 machine et de Minecraft 26.2 dans `../SETUP-MC-MODDING.md`.
 
-Statut : **étapes 1 à 9 faites** — l'épée, sa configuration, sa régénération, le
-cumul d'enchantements, la vague de lumière, le socle, la génération et le
-brouillard. Restent les finitions (§8, étape 10).
+Statut : **le plan est terminé — étapes 1 à 10 faites.** L'épée, sa
+configuration, sa régénération, le cumul d'enchantements, la vague de lumière, le
+socle, la génération, le brouillard et les finitions. La suite est une v2, dont
+les intentions sont notées en §4.1 et §4.2.
 Dernière mise à jour : 12/09/2026.
 
 Conventions de ce fichier :
@@ -732,6 +733,37 @@ faudra le paramétrer pour qu'il produise plusieurs fichiers.
   `placeItemBackInInventory` passe par `Player.drop`, qui la fait tomber dans les
   herbes hors du champ de vision : jamais détruite, mais introuvable.
 
+#### Sons, particules et advancement ✅ — **faits (étape 10)**
+
+- **Au retrait de l'Épée de Légende, et d'elle seule** : le bruit de pierre
+  habituel, doublé d'un `BEACON_ACTIVATE`, et une gerbe d'`END_ROD` et de
+  `TOTEM_OF_UNDYING`. Une épée en fer garde le son sobre — la cérémonie est pour
+  la légende, pas pour le mobilier.
+- **À la remise** : exactement le même son que pour n'importe quelle épée. Une
+  note ajoutée pour la seule Épée de Légende a été essayée puis retirée le
+  12/09/2026 — remettre l'épée n'est pas un événement, et le carillon s'entendait
+  comme un défaut.
+- **En continu, deux effets aux propriétaires distincts**, et c'est ce partage
+  qui compte : les étincelles d'`END_ROD` appartiennent à **l'épée**, donc elles
+  apparaissent sur n'importe quel socle qui la porte, y compris chez soi ; le
+  `BEACON_AMBIENT` rare appartient au **lieu**, donc il ne sonne que sur un
+  sanctuaire non réclamé, à la même condition que le brouillard. Sans cette
+  séparation, replanter l'épée à la base ferait ronronner un socle décoratif pour
+  toujours.
+- **Advancement `mastersword:drawn_from_the_stone`** — « Tirée de la pierre »,
+  cadre `challenge`, rangé sous `minecraft:adventure/root`. Il repose sur un
+  **déclencheur maison** (`mastersword:drawn_from_stone`) et non sur
+  `inventory_changed`, qui se serait déclenché sur un `/give` ou en créatif. Le
+  Java ne dit que « une épée a été tirée d'un socle » ; c'est le JSON qui dit
+  laquelle compte, comme le fait `UsedTotemTrigger` en vanilla.
+
+⚠️ Piège payé comptant sur ce point : **`Inventory.add` vide la pile qu'on lui
+passe** (`copyAndClear`, ou `setCount(0)` en créatif) et `ItemStack.getItem()`
+répond `AIR` dès que le compte est à zéro. Tester « est-ce l'Épée de Légende ? »
+*après* l'avoir donnée au joueur répond donc toujours non, et sautait en silence
+la totalité du bloc ci-dessus. L'identité se lit **avant** la remise au joueur, et
+l'advancement reçoit une copie.
+
 Conséquence : l'état persistant du socle a besoin de **trois** informations
 distinctes — « une épée est-elle posée ? », « le brouillard a-t-il déjà été
 consommé ? » et, depuis l'étape 9, « ce socle est-il celui que la génération a
@@ -1007,10 +1039,12 @@ src/main/java/re/jerome/mastersword/
 ├─ config/MasterSwordConfig  Codec, chargement, sauvegarde normalisée ✔ créé
 ├─ command/MasterSwordCommand  /mastersword reload ✔ créé
 ├─ registry/                 ModItems ✔, ModItemIds ✔, ModComponents ✔,
-│                            ModEntityTypes ✔, ModBlocks ✔, ModBlockEntities ✔
+│                            ModEntityTypes ✔, ModBlocks ✔, ModBlockEntities ✔,
+│                            ModCriteria ✔
 ├─ item/MasterSwordItem      ✔ régénération ; l'attaque chargée à l'étape 6
 ├─ block/PedestalBlock ✔, PedestalBlockEntity ✔ socle
 ├─ entity/LightWaveEntity    ✔ créée
+├─ advancement/DrawnFromStoneTrigger ✔ déclencheur maison
 ├─ worldgen/                 StructurePlacement custom (le reste en JSON data/)
 └─ mixin/                    ItemStackMixin ✔ durabilité configurable,
                              AnvilMenuMixin ✔, EnchantmentHelperMixin ✔,
@@ -1106,7 +1140,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 7 | Socle | bloc, BlockEntity, rendu de l'épée plantée, retrait et remise | **fait** 11/09/2026 |
 | 8 | Génération | structure NBT, `structure_set` calqué sur le manoir, `exclusion_zone` | **fait** 12/09/2026 |
 | 9 | Brouillard | drapeau `shrine`, courbe 50 → 10 blocs, disparition définitive | **fait** 12/09/2026 |
-| 10 | Finitions | sons, particules, advancement de retrait, traductions fr/en, modèle 3D de l'épée **(fait 11/09/2026)** | à faire |
+| 10 | Finitions | sons, particules, advancement de retrait, traductions fr/en, modèle 3D de l'épée **(fait 11/09/2026)** | **fait** 12/09/2026 |
 
 La config passe en étape 3, avant tout ce qui a des valeurs à régler : la
 brancher après coup obligerait à repasser sur chaque fichier.
@@ -1126,6 +1160,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 
 | Date | Décision |
 | --- | --- |
+| 12/09/2026 | **Étape 10 faite : le plan est terminé.** Sons, particules, advancement et traductions, **sans un seul asset nouveau** — que des sons et des particules vanilla, faute de pouvoir composer un `.ogg`. Les effets continus se partagent selon leur propriétaire : les étincelles suivent **l'épée** (n'importe quel socle), le bourdonnement suit **le lieu** (sanctuaire non réclamé, même condition que le brouillard), sans quoi replanter l'épée chez soi ferait ronronner un socle décoratif à jamais. L'advancement repose sur un **déclencheur maison** enregistré dans `BuiltInRegistries.TRIGGER_TYPES` — public, donc sans mixin, `CriteriaTriggers.register` étant privé — parce qu'`inventory_changed` se serait déclenché sur un `/give` ou en créatif. Le Java reste générique, le JSON choisit l'épée qui compte : c'est la forme d'`UsedTotemTrigger`. **Pas de sous-agent de relecture**, aucune catégorie obligatoire de `CLAUDE.md` n'étant touchée ; vérifié par le build, la validation des JSON, le compte d'advancements chargés (1689 contre 1688 en vanilla, preuve que le nôtre est parsé) et l'essai en jeu. ⚠️ L'essai a justement trouvé ce que la relecture aurait vu : **`Inventory.add` vide la pile qu'on lui passe**, et `ItemStack.getItem()` répond `AIR` à compte nul, donc tester « est-ce l'Épée de Légende ? » après l'avoir donnée au joueur sautait en silence le son, la gerbe **et** l'advancement. L'identité se lit désormais avant la remise. Second retour de Jérôme : la note ajoutée à la pose est retirée, le son redevient celui de toutes les épées. |
 | 12/09/2026 | **Étape 9 faite : le brouillard.** Deux surprises, toutes deux dans le sens du moins de code. **Aucun paquet réseau n'a été écrit** : `getUpdateTag` renvoie `saveCustomOnly` depuis l'étape 7, donc l'état complet du socle était déjà côté client — la « synchro serveur → client » annoncée au plan était faite d'avance. Et **la `SavedData` de §5 a été abandonnée** au profit d'un drapeau **`shrine`**, posé uniquement par le `.nbt` de la structure et sans setter en Java (choix de Jérôme). Elle ne voyait pas le cas qui compte : replanter l'épée dans un socle posé chez soi aurait levé un brouillard permanent sur la base. Le drapeau règle les deux, et meurt avec le socle qu'on casse. Côté rendu, **Fabric n'a aucune API de brouillard** — les 66 jars du cache passés en revue, zéro classe qui mentionne `Fog` — donc un mixin sur `FogRenderer.setupFog`, public et qui **renvoie** le `FogData` : injection en `RETURN`, ni `@Local` ni ordinal, une config de mixins client séparée pour les source sets. Tout est en `Math.min` contre ce que vanilla a posé : le brouillard ne peut qu'ajouter. **Relecture Opus** : a attrapé un bug qui rendait la fonctionnalité **totalement inopérante**. Filtrer sur `isShrine()` dans l'écouteur `BLOCK_ENTITY_LOAD` ne marche pas — Fabric tire l'événement depuis `LevelChunk.setBlockEntity`, au `Map.put`, soit l'offset 5 de `lambda$replaceWithPacketData$0`, alors que `loadWithComponents` ne lit le NBT qu'à l'offset 52 : au moment de l'événement **tous les champs valent encore leur défaut**. Vérifié au bytecode avant correction. Le tri se fait désormais par image, après chargement. Deux autres prises au passage : la recoloration n'était pas gardée et **rendait de la vue sous Cécité** (les distances, elles, étaient inattaquables), et `remove(clé)` au déchargement pouvait effacer l'entrée du socle **suivant** à la même position, vanilla posant le nouveau avant de retirer l'ancien. **Deux essais en jeu pour calibrer la courbe**, chacun sur une erreur de fait plutôt que de code. Un brouillard se lit comme un **rapport** de distances : interpoler droit laissait la portée à 91 blocs quand le joueur était à 20 blocs du socle, invisible sous la canopée — d'où une division de la portée à chaque pas, et l'abandon de la courbe quadratique de §5 qui aggravait le même défaut. Puis **`FOG_END_DISTANCE` vaut 1024 et non la distance de rendu** (celle-ci est dans l'autre paire de bornes du shader, combinée par un `max`), et aucun biome vanilla ne la surcharge : diviser 1024 demande une rampe en **racine carrée** — l'inverse exact du carré de départ — sans quoi l'épée restait brumée à 55 % seulement à 20 blocs. Relevé au passage et corrigé dans le code comme dans le mémo : le shader lit `d <= fogStart` comme **aucun** brouillard, donc un `start` qui dépasse `end` ne l'affaiblit pas, il le supprime. Rendu validé par Jérôme le 12/09/2026. |
 | 12/09/2026 | **Étape 8 faite : la structure se génère.** Tout en données, **zéro ligne de Java** — c'est l'option A de §4.1. Quatre fichiers : le `structure_set` (spacing **72**, separation 20, `triangular`, salt 48271393, `exclusion_zone` vers `minecraft:woodland_mansions` à `chunk_count: 8` = 128 blocs), la `structure` jigsaw de surface, le `template_pool` à un seul `single_pool_element`, et un tag de biome sur `minecraft:dark_forest`. Le `.nbt` est **produit par script** (`tools/structure/`, avec un encodeur NBT maison, relu après écriture) plutôt qu'enregistré depuis un structure block : il reste diffable et reproductible, et rouvrable en jeu pour retouche. **Le socle porte ses données de `BlockEntity` dans le `.nbt`** — comme les coffres vanilla portent leur loot table — donc l'épée est plantée dès la génération, sans une ligne de code. Deux pièges payés comptant. **`processors` est obligatoire** dans un `single_pool_element` : l'omettre ne fait rien au démarrage mais **crashe à la création du monde** (`No key processors in MapLike`). Et **`surface_structures` s'exécute avant `vegetal_decoration`** : les arbres sont posés *après* la structure et poussaient au travers — creuser de l'air n'y change rien, seul un sol non enracinable le fait. D'où un sol **100 % pierre** (aucun bloc de `#minecraft:dirt`) et une clairière élargie à 9×9, un tronc de dark oak faisant 2×2. Le décor gagne au passage 8 blocs différents au lieu de 2, par tirage pondéré déterministe. Socle re-texturé en `stone_bricks` / `mossy_stone_bricks` / `chiseled_stone_bricks` : le deepslate jurait avec la ruine grise (§4.2 mis à jour). Contradiction de §4.1 levée : `spacing` vaut **72**, et il ne sera configurable qu'avec l'option B. **Relecture Opus** : a attrapé une contradiction entre le commentaire et le code — le bord irrégulier sautait des cases au hasard, qui gardaient l'herbe d'origine et laissaient **6 carrés 2×2 de sol nu dans l'emprise**, le plus proche à 4,3 blocs du socle, de quoi enraciner le dark oak qu'on prétendait avoir exclu. Corrigé : l'emprise 9×9 est **entièrement pavée**, l'irrégularité vient de la matière et non de trous, et le script vérifie les 81 cases à chaque génération. §4.1 reformulée dans la foulée : les 120 blocs ne sont tenus que pour le manoir, ni pour le portail en ruine ni pour les structures des autres mods. |
 | 11/09/2026 | **Apparence de l'épée : modèle 3D maison v3, 22 cubes** (avance sur l'étape 10). Le mod embarque **uniquement des assets originaux** : `models/item/master_sword_3d.json` + sa texture 64×64, sculptés dans Blockbench via son plugin MCP. Proportions relevées sur une référence fournie par Jérôme : **lame 69 % de la longueur totale, garde 10 %, manche 21 %** — les versions précédentes plafonnaient à 58 % de lame pour une garde deux fois trop large. La lame gagne sa longueur en descendant le pommeau à **y = −4** : le format autorise −16..32, et passer sous zéro rallonge sans rien sacrifier. Deux erreurs corrigées au passage, toutes deux répétées : **les ailes de la garde pointent vers le bas**, pas vers le haut ; et un motif peint sur la face de la lame est **invisible**, car l'arête centrale est en relief en z et le recouvre — il va sur l'arête. L'or est réduit à la gemme de garde et deux accents de ricasso, le reste est violet et vert. Les v1 (13 cubes) et v2 (26) sont conservées dans `tools/model/`. ⚠️ **Le modèle de Moubarack sort du dépôt** : il est livré comme **resource pack séparé** (`../MasterSword-Moubarack-Mauve/` aux couleurs d’origine, `-Bleu/` pour la version recolorée) qui surcharge `master_sword_3d` au même chemin — pack activé, on voit Moubarack ; désactivé, le modèle maison. Rien à modifier dans le mod pour basculer, et **la question §9 n°2 est close : le dépôt est publiable**. `pack_format` de 26.2 = **88** (`resource_major` du `version.json` client). `BLADE_DOWN` **reste à 135** : l'avoir passé à 180 pour un modèle vertical avait cassé le rendu de toutes les épées vanilla, que le socle accepte aussi via `#swords` — c'est au modèle de se plier à la convention du sprite, pas au socle de se plier à un modèle. |

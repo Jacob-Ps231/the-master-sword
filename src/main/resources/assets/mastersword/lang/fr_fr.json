@@ -1,5 +1,7 @@
 {
 	"item.mastersword.master_sword": "L'Épée de Légende",
 	"block.mastersword.master_sword_pedestal": "Socle de L'Épée de Légende",
-	"commands.mastersword.reload.success": "Configuration de L'Épée de Légende rechargée (durabilité : %s)."
+	"commands.mastersword.reload.success": "Configuration de L'Épée de Légende rechargée (durabilité : %s).",
+	"advancements.mastersword.drawn_from_the_stone.title": "Tirée de la pierre",
+	"advancements.mastersword.drawn_from_the_stone.description": "Retirer L'Épée de Légende de son socle, et lever le brouillard pour de bon."
 }

@@ -1,0 +1,33 @@
+{
+	"parent": "minecraft:adventure/root",
+	"criteria": {
+		"drawn": {
+			"trigger": "mastersword:drawn_from_stone",
+			"conditions": {
+				"item": {
+					"items": "mastersword:master_sword"
+				}
+			}
+		}
+	},
+	"display": {
+		"icon": {
+			"id": "mastersword:master_sword"
+		},
+		"title": {
+			"translate": "advancements.mastersword.drawn_from_the_stone.title"
+		},
+		"description": {
+			"translate": "advancements.mastersword.drawn_from_the_stone.description"
+		},
+		"frame": "challenge",
+		"announce_to_chat": true,
+		"show_toast": true
+	},
+	"requirements": [
+		[
+			"drawn"
+		]
+	],
+	"sends_telemetry_event": false
+}

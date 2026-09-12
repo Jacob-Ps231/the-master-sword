@@ -9,6 +9,7 @@ import re.jerome.mastersword.config.MasterSwordConfig;
 import re.jerome.mastersword.registry.ModBlockEntities;
 import re.jerome.mastersword.registry.ModBlocks;
 import re.jerome.mastersword.registry.ModComponents;
+import re.jerome.mastersword.registry.ModCriteria;
 import re.jerome.mastersword.registry.ModEntityTypes;
 import re.jerome.mastersword.registry.ModItems;
 
@@ -34,6 +35,9 @@ public class MasterSwordMod implements ModInitializer {
 		// is valid for, so the block has to exist by then.
 		ModBlocks.register();
 		ModBlockEntities.register();
+		// Before any datapack is read, so the advancement that names this trigger
+		// finds it in the registry.
+		ModCriteria.register();
 		MasterSwordCommand.register();
 		LOGGER.info("The Master Sword is waiting in the dark forest.");
 	}

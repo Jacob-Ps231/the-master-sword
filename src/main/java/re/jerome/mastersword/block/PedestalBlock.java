@@ -3,6 +3,8 @@ package re.jerome.mastersword.block;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.ItemTags;
@@ -31,6 +33,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 import re.jerome.mastersword.item.MasterSwordItem;
 import re.jerome.mastersword.registry.ModBlockEntities;
+import re.jerome.mastersword.registry.ModCriteria;
 
 // The pedestal the Master Sword is planted in.
 //
@@ -153,6 +156,10 @@ public class PedestalBlock extends BaseEntityBlock {
 		// In creative the sword stays in hand, the way an item frame leaves the
 		// creative player's stack alone; in survival it leaves the hand for good.
 		pedestal.setSword(player.hasInfiniteMaterials() ? stack.copyWithCount(1) : stack.split(1));
+		// The same stone sound for every sword, the Master Sword included. A second
+		// note layered on top for the legend was tried and dropped: putting the
+		// sword back is not an event, and the chime read as a glitch (Jérôme,
+		// 12/09/2026). Drawing it is where the ceremony belongs.
 		level.playSound(null, pos, SoundEvents.NETHERITE_BLOCK_PLACE, SoundSource.BLOCKS, 0.8F, 1.2F);
 		return InteractionResult.SUCCESS_SERVER;
 	}
@@ -180,11 +187,36 @@ public class PedestalBlock extends BaseEntityBlock {
 		// pedestal instead, where the player is already looking. The sword is never
 		// destroyed either way; this only decides where it lands.
 		ItemStack taken = pedestal.removeSword();
+		// Read before handing the stack over. Inventory.add EMPTIES what it is
+		// given -- copyAndClear on the normal path, setCount(0) in creative -- and
+		// ItemStack.getItem() answers AIR as soon as the count reaches zero. Asking
+		// afterwards whether this was the Master Sword therefore always says no, and
+		// the ceremony below, advancement included, is silently skipped.
+		boolean legendary = MasterSwordItem.isMasterSword(taken);
+		ItemStack drawn = taken.copy();
+
 		if (!player.getInventory().add(taken)) {
 			Block.popResource(level, pos, taken);
 		}
 
 		level.playSound(null, pos, SoundEvents.NETHERITE_BLOCK_BREAK, SoundSource.BLOCKS, 0.8F, 1.4F);
+
+		// Only the Master Sword gets the ceremony. The pedestal takes any sword
+		// (SPEC 4.3), and an iron one leaving it is furniture being moved, not a
+		// legend waking: it keeps the plain stone sound above and nothing else.
+		if (legendary) {
+			level.playSound(null, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 1.0F, 1.2F);
+			if (level instanceof ServerLevel serverLevel) {
+				PedestalBlockEntity.drawnBurst(serverLevel, pos);
+			}
+
+			// The copy, not `taken`: the advancement's item predicate has to see a
+			// real stack, and by now the original has been emptied into the inventory.
+			if (player instanceof ServerPlayer serverPlayer) {
+				ModCriteria.DRAWN_FROM_STONE.trigger(serverPlayer, drawn);
+			}
+		}
+
 		return InteractionResult.SUCCESS_SERVER;
 	}
 

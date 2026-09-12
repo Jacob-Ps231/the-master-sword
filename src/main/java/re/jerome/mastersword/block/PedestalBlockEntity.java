@@ -2,11 +2,14 @@ package re.jerome.mastersword.block;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -120,6 +123,55 @@ public class PedestalBlockEntity extends BlockEntity {
 		if (MasterSwordItem.regenerate(pedestal.sword, serverLevel)) {
 			pedestal.sync();
 		}
+
+		pedestal.ambience(serverLevel, pos);
+	}
+
+	// How often the idle effects fire. Both are deliberately slow: sendParticles
+	// and playSound each cost a packet to every player watching the chunk, and this
+	// runs on a block entity that ticks forever.
+	private static final int SPARKLE_INTERVAL = 20;
+	private static final int HUM_INTERVAL = 160;
+
+	/**
+	 * The pedestal at rest.
+	 *
+	 * Two effects with two different owners, and the split is the point. The
+	 * sparkle belongs to the **sword**, so it shows on any pedestal holding it,
+	 * including one on a shelf at home. The hum belongs to the **place**, so it
+	 * only sounds at a shrine no one has drawn from yet -- the same condition as
+	 * the fog. Without that split, planting the sword back home would set a
+	 * decorative pedestal humming forever.
+	 */
+	private void ambience(ServerLevel level, BlockPos pos) {
+		long time = level.getGameTime();
+
+		if (time % SPARKLE_INTERVAL == 0) {
+			// Just above the slot, where the blade is drawn rather than where the
+			// block sits: the model stands a full block higher than its own position.
+			level.sendParticles(ParticleTypes.END_ROD,
+					pos.getX() + 0.5, pos.getY() + 1.4, pos.getZ() + 0.5,
+					2, 0.12, 0.3, 0.12, 0.0);
+		}
+
+		if (this.guardsFog() && time % HUM_INTERVAL == 0) {
+			level.playSound(null, pos, SoundEvents.BEACON_AMBIENT, SoundSource.BLOCKS, 0.35F, 0.8F);
+		}
+	}
+
+	/**
+	 * The burst when the Master Sword finally comes out.
+	 *
+	 * Lives here rather than in the block because it is the pedestal's own
+	 * geometry it is aimed at, and because PedestalBlock already delegates every
+	 * other piece of pedestal state to this class.
+	 */
+	public static void drawnBurst(ServerLevel level, BlockPos pos) {
+		double x = pos.getX() + 0.5;
+		double y = pos.getY() + 1.2;
+		double z = pos.getZ() + 0.5;
+		level.sendParticles(ParticleTypes.END_ROD, x, y, z, 60, 0.25, 0.5, 0.25, 0.12);
+		level.sendParticles(ParticleTypes.TOTEM_OF_UNDYING, x, y, z, 40, 0.3, 0.5, 0.3, 0.25);
 	}
 
 	// Called by LevelChunk.setBlockState while this block entity is still readable,
