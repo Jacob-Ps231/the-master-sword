@@ -681,9 +681,27 @@ du modèle d'item applique un demi-tour autour de Y, qui reflète ça à **135°
 d'où une rotation de 45° qui couche la lame à l'horizontale au lieu de la
 redresser. La bonne valeur est **135°**, qui amène la pointe à 270° : droit vers
 le bas.
-- Décor : 5×5 à 7×7 blocs — racines, mousse, pierres moussues, un soupçon de
-  lumière au sol. Une structure NBT posée par un `single_pool_element`, pour
-  rester éditable en jeu au block-editor.
+- Décor : une ruine **9×9**, posée par un `single_pool_element` et donc éditable
+  en jeu au block-editor. Réalisé à l'étape 8, avec deux écarts sur ce qui était
+  prévu ici, tous deux constatés en jeu :
+  - **pas de lumière au sol** — les `shroomlight` faisaient tache dans la
+    pénombre de la forêt ;
+  - **pas un bloc de terre ni d'herbe**, et l'emprise **entièrement pavée** de
+    pierre. Ce n'est pas un choix esthétique : `surface_structures` s'exécute
+    avant `vegetal_decoration`, donc un arbre posé ensuite pousse au travers de
+    la structure. Lui refuser un sol où s'enraciner est le seul moyen de garder
+    la clairière dégagée, et le 9×9 tient compte du tronc 2×2 du dark oak.
+
+  Le relief vient de la **matière** — mousse, pierre taillée, fissurée, gravier,
+  andésite, tapis de mousse, 10 blocs en tout — tirée par un hasard déterministe,
+  plus moussue au centre et plus délavée au bord.
+
+🔷 **Prévu en v2 : plusieurs variantes de ruine.** Le `template_pool` accepte
+déjà une liste d'`elements` avec un `weight` chacun, et le jigsaw applique une
+rotation aléatoire à la pièce tirée : ajouter des variantes ne demande **aucun
+code**, seulement d'autres `.nbt` et des entrées dans le pool. Côté outillage,
+`tools/structure/build_structure.js` est écrit pour une structure unique ; il
+faudra le paramétrer pour qu'il produise plusieurs fichiers.
 
 ### 4.3 Retrait et remise de l'épée ✅ — **fait (étape 7)**
 
