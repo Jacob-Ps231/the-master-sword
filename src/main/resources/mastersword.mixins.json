@@ -6,9 +6,12 @@
 		"AnvilMenuMixin",
 		"EnchantCommandMixin",
 		"EnchantmentHelperMixin",
+		"FeaturePlacementMixins$FallenTree",
+		"FeaturePlacementMixins$HugeMushroom",
 		"ItemStackMixin",
 		"PlayerAttackMixin",
-		"ServerPlayerMixin"
+		"ServerPlayerMixin",
+		"TreeFeatureMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
