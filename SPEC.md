@@ -1010,6 +1010,25 @@ la relecture du 13/09 l'avait relevé, et la variante a été abandonnée depuis
 
 ## 5. Le brouillard ✅
 
+⚠️ **Incompatible avec Sodium et Iris**, constaté en jeu le 13/09/2026 sur
+l'instance Modrinth de Jérôme, et confirmé par élimination : le brouillard
+revient dès que les deux jars sortent du dossier `mods`. Tout le reste du mod
+fonctionne normalement à côté.
+
+Ce n'est pas un conflit d'ordre entre deux mixins sur la même méthode, comme je
+l'avais d'abord supposé : `FogRenderer` n'a qu'une `setupFog`, elle renvoie
+`FogData`, et le rappel de Sodium renvoie un `Vector4f` — il n'injecte donc pas
+au même endroit. Sodium tient son propre `FogParameters` et rend le terrain avec
+ses shaders (`assets/sodium/shaders/include/fog.glsl`) ; un mixin qui épaissit le
+brouillard de vanilla n'atteint pas ce chemin-là.
+
+🔷 **À traiter avec la question des API**, mise de côté par Jérôme le 13/09 : il
+existe des façons de déclarer du brouillard qu'un moteur de rendu tiers respecte,
+au lieu de patcher vanilla. C'est le bon cadre pour reprendre ce point ; le
+corriger par un réglage de priorité n'aurait pas marché.
+
+
+
 - Présent **uniquement** tant que l'épée n'a jamais été retirée de sa structure.
 - S'intensifie à l'approche. Rayon extérieur : **50 blocs**.
 - Disparaît **définitivement** au premier retrait — remettre l'épée ne le
