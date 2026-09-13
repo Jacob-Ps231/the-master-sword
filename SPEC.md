@@ -1528,6 +1528,39 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | --- | --- | --- |
 | 1 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
 | 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
+| 3 | **Le sanctuaire tombe trop souvent en bordure de biome** — rivière ou mer. Signalé par Jérôme à trois reprises, la dernière le 13/09/2026. **Prochaine étape du projet.** | §4.1, et du code de worldgen |
+
+### Question 3 — ce qui est déjà établi, pour ne pas le refaire
+
+**La cause est lue au bytecode, elle n'est pas à chercher.**
+`Structure.isValidBiome` ne teste **qu'un seul point** — `getNoiseBiome` sur le
+`QuartPos` de la position du stub, soit **une cellule de 4×4×4 blocs**. Ni
+l'emprise, ni le voisinage. Et `JigsawStructure.findGenerationPoint` construit ce
+point comme `new BlockPos(chunkPos.getMinBlockX(), y, chunkPos.getMinBlockZ())`,
+c'est-à-dire le **coin nord-ouest du chunk** et non son centre : le biome est
+donc validé sur un coin, alors que la structure se bâtit jusqu'à 16 blocs plus
+loin.
+
+⚠️ **L'option B de §4.1 ne corrigerait pas ça.** Un `StructurePlacement` choisit
+des *chunks* et s'écarte d'autres *sets* ; la marge au bord de biome se décide
+dans `Structure`. Ne pas partir là-dessus en croyant faire d'une pierre deux
+coups.
+
+**Mesure disponible : `tools/structure/biome_edge.js`**, qui lit un monde
+sauvegardé, trouve les socles (en ignorant ceux posés à la main, `shrine: 0`) et
+donne pour chacun la distance au premier biome étranger plus une carte des
+biomes. Le seul sanctuaire généré mesuré à ce jour est à **8 blocs d'une
+rivière** dans une Dark Forest de ~370 blocs de côté.
+
+⚠️ **Mais n = 1** : les autres mondes de la machine sont soit antérieurs au mod,
+soit trop petits. **Premier travail de la reprise : pré-générer quelques milliers
+de chunks de Dark Forest et relancer le scan**, pour connaître le taux réel avant
+de choisir un correctif — l'observation de Jérôme dit « souvent », la mesure ne
+dit encore rien.
+
+Pistes à instruire ensuite, aucune tranchée : un `StructureType` maison qui
+échantillonne plusieurs points autour de l'ancre, un mixin sur `isValidBiome`, ou
+un `project_start_to_heightmap` / décalage qui recentre l'ancre dans le chunk.
 
 ---
 
