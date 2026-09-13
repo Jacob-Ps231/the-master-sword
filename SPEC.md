@@ -1056,6 +1056,51 @@ d'enregistrement des configs, c'est-à-dire le hasard, et il tombait du mauvais
 côté. Monter la priorité aurait aggravé le défaut : c'est probablement ce qui
 avait fait écarter la piste.
 
+#### Sodium Extra : compatible, vérifié le 13/09/2026
+
+Ajouté à l'instance et passé au témoin. **Il ne peut pas écraser notre
+brouillard**, et pas pour la raison qu'on croirait : son `postFogSetup` n'est pas
+ancré à `RETURN` comme les autres mais à
+
+```java
+@At(value = "FIELD", target = "Lnet/minecraft/client/renderer/fog/FogData;renderDistanceEnd:F",
+    opcode = 181 /* PUTFIELD */, ordinal = 0, shift = At.Shift.AFTER)
+```
+
+c'est-à-dire **avant** le `aload` qui précède le `areturn`, donc avant tout
+handler `RETURN`. Sa `priority = 1300` — la plus haute des quatre — n'y change
+rien : la priorité ne départage que des handlers partageant le **même** ancrage.
+Ordre relevé sur le bytecode fusionné, à quatre mods :
+
+```
+  9 iris$setupLegacyWaterFog          (HEAD)
+ 21 sodium-extra$resetFogEnvironment  (HEAD)
+212 sodium-extra$postFogSetup         ← ancré au PUTFIELD
+241 mastersword$thickenNearShrine     ← nous
+255 sodium$storeFogParameters         ← la photo de Sodium
+282 iris$render
+285 areturn
+```
+
+Comme `FogHandler.apply` n'écrit que par `Math.min`, on rabat depuis ce que
+Sodium Extra a laissé, quel que soit son réglage. Conséquence à assumer : **un
+joueur qui coupe le brouillard dans Sodium Extra verra quand même celui du
+sanctuaire.** Son `ProtectedFogType` (`BLINDNESS`, `DARKNESS`, `LAVA`,
+`POWDER_SNOW`, `WATER`) ne nous couvre pas, mais l'ordre suffit.
+
+Vérifié aussi que **notre brouillard ne déclenche pas son « Fog Occlusion »** :
+aucune classe de Sodium Extra ne lit `environmentalEnd` / `environmentalStart`
+pour le culling, qui est piloté par la distance réglée par le joueur. Sinon le
+terrain aurait disparu au-delà de notre portée réduite — sans rien pour le
+masquer sous shaders.
+
+⚠️ **Et l'ordre entre Iris et Sodium a changé entre deux essais** (Iris avant
+Sodium à deux mods, après à quatre), uniquement parce qu'un mod s'est ajouté :
+les deux sont à 1000 et se départagent sur l'ordre d'enregistrement. Illustration
+directe de pourquoi notre priorité est écrite plutôt que subie. Sans effet ici :
+Iris ne capture que la couleur, via `cir.getReturnValue()`, donc le même objet
+déjà teinté.
+
 #### Sous un shaderpack : limite acceptée, pas contournable
 
 Le correctif ci-dessus rend le brouillard au terrain de **Sodium**. Sous un
