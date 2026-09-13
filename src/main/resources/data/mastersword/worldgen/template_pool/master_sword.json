@@ -4,7 +4,7 @@
 		{
 			"element": {
 				"element_type": "minecraft:single_pool_element",
-				"location": "mastersword:master_sword",
+				"location": "mastersword:clearing",
 				"processors": "minecraft:empty",
 				"projection": "rigid"
 			},
