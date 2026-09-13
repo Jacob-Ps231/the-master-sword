@@ -1010,22 +1010,79 @@ la relecture du 13/09 l'avait relevé, et la variante a été abandonnée depuis
 
 ## 5. Le brouillard ✅
 
-⚠️ **Incompatible avec Sodium et Iris**, constaté en jeu le 13/09/2026 sur
-l'instance Modrinth de Jérôme, et confirmé par élimination : le brouillard
-revient dès que les deux jars sortent du dossier `mods`. Tout le reste du mod
-fonctionne normalement à côté.
+✅ **Réparé sous Sodium le 13/09/2026** — validé en jeu par Jérôme : avec Sodium
+et Iris installés et les shaders coupés, le brouillard est là. Il ne revenait
+auparavant qu'en sortant les deux jars du dossier `mods`.
 
-Ce n'est pas un conflit d'ordre entre deux mixins sur la même méthode, comme je
-l'avais d'abord supposé : `FogRenderer` n'a qu'une `setupFog`, elle renvoie
-`FogData`, et le rappel de Sodium renvoie un `Vector4f` — il n'injecte donc pas
-au même endroit. Sodium tient son propre `FogParameters` et rend le terrain avec
-ses shaders (`assets/sodium/shaders/include/fog.glsl`) ; un mixin qui épaissit le
-brouillard de vanilla n'atteint pas ce chemin-là.
+⚠️ **Reste absent sous un shaderpack chargé, et c'est définitif** — voir la fin
+de cette section. Ce n'est pas la même cause, et rien de ce que le mod peut
+écrire n'y changera quoi que ce soit.
 
-🔷 **À traiter avec la question des API**, mise de côté par Jérôme le 13/09 : il
-existe des façons de déclarer du brouillard qu'un moteur de rendu tiers respecte,
-au lieu de patcher vanilla. C'est le bon cadre pour reprendre ce point ; le
-corriger par un réglage de priorité n'aurait pas marché.
+**C'était bien un conflit d'ordre entre deux mixins sur la même méthode**, et la
+raison donnée ici pour écarter cette piste était fausse. Elle disait : « le
+rappel de Sodium renvoie un `Vector4f`, il n'injecte donc pas au même endroit ».
+Le pool de constantes de
+`net/caffeinemc/mods/sodium/mixin/core/render/world/FogRendererMixin.class` dit
+`@Mixin(FogRenderer.class)` et `@Inject(method = "setupFog", at = @At("RETURN"))`
+— **notre point d'injection exactement**. Le `Vector4f` n'était que le
+**générique** de son `CallbackInfoReturnable`, reste d'une signature plus
+ancienne de Minecraft ; les génériques étant effacés à l'exécution, le mixin
+s'applique quand même. ⚠️ **Le générique d'un `CallbackInfoReturnable` n'est pas
+une preuve de la méthode visée** — seul le champ `method` de l'annotation l'est.
+
+Sodium photographie le `FogData` par un `@Local` de MixinExtras et en recopie
+huit champs dans son `FogParameters`, que ses shaders lisent avec la formule de
+vanilla (`assets/sodium/shaders/include/fog.glsl` : même `max` entre les deux
+paires de bornes). Iris lit **ce même** `FogParameters` pour son uniforme
+`fogEnd`. Sodium ne fabrique donc pas son brouillard : il recopie le nôtre, à
+condition de passer **après** nous.
+
+**Correctif : `@Mixin(value = FogRenderer.class, priority = 500)`.** Une priorité
+**basse** est appliquée **en premier**, donc s'exécute en premier — voir §5 de
+`../SETUP-MC-MODDING.md`. À 1000 partout, l'ordre tombait sur l'ordre
+d'enregistrement des configs, c'est-à-dire le hasard, et il tombait du mauvais
+côté. Monter la priorité aurait aggravé le défaut : c'est probablement ce qui
+avait fait écarter la piste.
+
+#### Sous un shaderpack : limite acceptée, pas contournable
+
+Le correctif ci-dessus rend le brouillard au terrain de **Sodium**. Sous un
+**shaderpack Iris chargé**, il reste absent, et la cause est ailleurs : le pack
+ne calcule pas le brouillard à partir de ce que le jeu lui donne.
+
+Mesuré sur celui de Jérôme, **Complementary Reimagined r5.8.1**. Sa fonction de
+brouillard, en entier (`shaders/lib/atmospherics/fog/mainFog.glsl`) :
+
+```glsl
+void DoFog(inout vec4 color, …) {
+    #ifdef CAVE_FOG          DoCaveFog(color, lViewPos);
+    #ifdef ATMOSPHERIC_FOG   DoAtmosphericFog(color, playerPos, lViewPosAtm, VdotS);
+    #ifdef BORDER_FOG        DoBorderFog(color, skyFade, …);
+    if (isEyeInWater == 1) DoWaterFog(…); else if (== 2) DoLavaFog(…); else if (== 3) DoPowderSnowFog(…);
+    if (blindness > 0.00001) DoBlindnessFog(color, lViewPos);
+    if (darknessFactor > 0.00001) DoDarknessFog(color, lViewPos);
+}
+```
+
+Les identifiants **`fogEnd`, `fogStart`, `fogDensity`, `fogMode` et `fogShape`
+n'apparaissent nulle part dans le pack** — zéro occurrence sur l'ensemble des
+fichiers. Il ne les ignore pas : il n'y a aucun chemin de code. `fogColor` est
+bien déclaré (`lib/uniforms.glsl:56`) et reçoit donc notre teinte, mais il ne
+sert qu'à la lave, la neige poudreuse, l'eau et le Nether — jamais au brouillard
+de surface. En surface à l'air libre, les deux seuls états du jeu que le pack
+lit sont `blindness` et `darknessFactor`, et tous deux **assombrissent**
+(`color *= 1.0 - fog`) au lieu de brumer.
+
+**Il n'y a donc aucune valeur à bouger.** Ce n'est plus une question d'API : ni
+Sodium ni Iris n'en exposent (vérifié classe par classe dans `sodium.api`, 52
+classes, et `iris.api.v0`, 7 — relevé complet dans `AUDIT-API.md`), et même une
+API n'y changerait rien, puisque le pack ne pose pas la question.
+
+🔷 **Décision de Jérôme, 13/09/2026 : on en reste là.** Sous shaderpack, le
+brouillard appartient au pack. Les deux seules suites possibles étaient un
+brouillard dessiné en géométrie propre — indépendant du moteur, mais un chantier
+entier au rendu incertain — ou un effet **Cécité** à l'approche, qui est un
+changement de gameplay et que le reste de cette section refuse explicitement.
 
 
 
@@ -1394,6 +1451,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 
 | Date | Décision |
 | --- | --- |
+| 13/09/2026 | **Audit des API, et le brouillard réparé sous Sodium.** L'audit (`AUDIT-API.md`, 42 jars de l'instance et le jar 26.2 passés à `javap`) a surtout servi à **défaire une affirmation de cette spec**. §5 disait que Sodium n'injectait pas au même endroit que nous, preuve à l'appui : « son rappel renvoie un `Vector4f` ». Faux — c'était le **générique de son `CallbackInfoReturnable`**, reste d'une signature plus ancienne, effacé à l'exécution ; le champ `method` de son annotation dit `setupFog` et son `@At` dit `RETURN`. **Un générique ne prouve pas la méthode visée**, et cette erreur de lecture avait fait classer la fonctionnalité comme irréparable, en écartant nommément la seule piste qui marchait. Le correctif est **un attribut** : `priority = 500`. Une priorité **basse** est appliquée en premier donc **s'exécute** en premier (`MixinInfo.compareTo` trie croissant, `applyMixins()` parcourt le `SortedSet` dans cet ordre, un `@Inject` à `RETURN` insère avant le `areturn`) — monter la priorité aurait aggravé le défaut, ce qui explique probablement l'échec de la tentative d'alors. **Vérifié sur le bytecode fusionné, avec témoin** : Sodium 0.9.1 et Iris 1.11.2 déposés dans `run/mods` (possible sans remapping, il n'y a plus d'`intermediary` depuis 26.1), `-Dmixin.debug.export=true`, et les deux exports lus à `javap`. Sans priorité : `iris$render`, `sodium$storeFogParameters`, **puis** `mastersword$thickenNearShrine` — Sodium photographiait le brouillard avant qu'on y touche. Avec : `mastersword$thickenNearShrine` **en tête**, Sodium en dernier. Pas de sous-agent de relecture : l'unique risque du changement était le **sens** du tri, et le témoin le tranche mieux qu'une lecture. **Validé en jeu par Jérôme le 13/09** — Sodium et Iris installés, shaders coupés, le brouillard est là. **Mais toujours absent sous shaderpack**, et le relevé de son pack a clos la question : `Complementary Reimagined r5.8.1` ne contient **aucune occurrence** de `fogEnd`, `fogStart`, `fogDensity`, `fogMode` ni `fogShape` — son brouillard de surface est entièrement le sien, et les deux seuls états du jeu qu'il lit à l'air libre (`blindness`, `darknessFactor`) assombrissent au lieu de brumer. Aucune valeur à bouger, donc aucune API n'y aurait changé quoi que ce soit. Jérôme tranche : **on en reste là** ; les deux suites possibles étaient un brouillard dessiné en géométrie propre ou un effet Cécité, écartées pour leur coût et pour le gameplay. Leçon transposable, versée au mémo : **un shaderpack est du GLSL en clair — `grep -rn fogEnd .` avant de promettre quoi que ce soit de « compatible shaders »**. Trois autres résultats de l'audit, non faits : aucun mod de structures de l'instance n'utilise de bibliothèque de placement ni de `StructurePlacement` custom (l'option B de §4.1 n'est faite **par personne**) ; **l'option B ne corrigerait pas les bordures de biome**, car `Structure.isValidBiome` ne teste **qu'un point**, au coin nord-ouest du chunk — mesuré sur le seul sanctuaire généré de nos mondes, à 8 blocs d'une rivière ; et le vrai manque de notre approche est le processor `minecraft:rule`, dont le `random_block_match` tire sur la **position absolue** (`Mth.getSeed(pos)`) alors que le tirage de `builder.js` est figé dans le `.nbt` — tous nos sanctuaires sont identiques au bloc près. |
 | 13/09/2026 | **La Cascade secrète est abandonnée ; le mod ne garde que la clairière.** Quatre versions essayées en jeu, aucune convaincante — le détail est en §4.2. Deux leçons valent plus que la variante. **Un terrain ne se transplante pas** : la capture du build de Jérôme était aux trois quarts du sol naturel, et posée sur un autre monde, aplani par `beard_thin`, elle est ressortie en pierre suspendue en l'air. Et **l'eau obéit à une règle simple que je n'avais pas su lire** : le niveau d'un écoulement est sa distance à la source, un par bloc, et une case n'est `falling` que si elle est alimentée par le dessus. Les deux ont été trouvées en **lisant le monde sauvegardé**, pas la documentation : `tools/structure/anvil.js` (lecteur de région Anvil) et `capture.js` sont nés de là et restent, non plus pour produire une variante mais pour savoir ce qu'une génération a vraiment produit. Le `template_pool` ne contient plus qu'un `element`. |
 | 13/09/2026 | **Étape 13 : la contrainte des arbres est levée, et les deux variantes sont refaites.** L'essai en jeu de l'étape 12 était sans appel — « trop carré », la cascade « pas jolie », un « mur de 4 blocs » au nord — et les trois défauts avaient la même cause : le sol ne pouvait être que minéral, et le `.nbt` remplissait sa boîte d'air et de pierre. **Trois leviers, tous vérifiés avant d'écrire.** (1) Un **verrou Java** (§4.4) remplace la palette : trois mixins annulent tout arbre, champignon géant ou tronc couché dont l'origine tombe dans un disque autour du socle. (2) La **liste de blocs d'un `.nbt` peut être creuse** — `placeInWorld` itère la liste et n'exige aucune couverture, vanilla le fait lui-même (`taiga_decoration_1` ne liste que 22 de ses 36 cases) — donc l'emprise a enfin une silhouette. `structure_void` aurait été **posé tel quel** : le jigsaw n'ajoute que `BlockIgnoreProcessor.STRUCTURE_BLOCK`. (3) Deux blocs couleur terre non enracinables trouvés en chemin, `dirt_path` et `packed_mud`. **L'erreur de fond, trouvée par la relecture Opus : `y=0` est le bloc de surface, pas l'air au-dessus** — `JigsawPlacement` ancre sur `box.minY() + getGroundLevelDelta()` avec un delta de **1**. Toute la prairie que je posais en `y=0` *remplaçait* la motte : l'essai en jeu montrait des cuvettes d'un bloc semées autour de la terrasse. Décor remonté en `y=1`, remplissage d'air démarré à `y=1`. **Second chiffre corrigé : le `random_selector` tire un arbre à 92 %, pas 2/3** — `birch_leaf_litter`, `fancy_oak_leaf_litter` et le défaut `oak_leaf_litter` sont aussi des features `minecraft:tree` — soit **5,8 %** de risque par case de terre à découvert et non 4 %. **Trois réglages demandés par Jérôme en jeu** : le disque du verrou resserré deux fois, jusqu'à un **rayon constant de 5** (le dimensionner sur l'emprise laissait un anneau d'herbe nue entre le sanctuaire et la forêt) ; **cinq chênes noirs plantés par la clairière elle-même**, pour remettre de la canopée ; et la cascade refaite en **deux étages** d'après une référence, parce qu'une colonne d'eau isolée « ne fait pas très naturel ». Le deux-étages tient sans un seul état d'écoulement intermédiaire parce que **chaque étage a sa source murée**, la vasque intermédiaire servant de quatrième mur à la seconde. **Relecture Opus, deux passes.** La première a bloqué le commit sur trois points, tous corrigés : le `y=0`, les champignons géants et troncs couchés que `TreeFeature` ne voyait pas, et `clearSkyOverBuiltColumns` qui écrivait en `y=0`. La seconde a validé l'eau à deux étages cellule par cellule, et corrigé deux affirmations : « une source s'étale toujours latéralement » est **incomplet** (`spread` sort tôt si elle peut couler vers le bas, sauf à partir de trois sources voisines — notre contrôle est donc plus strict que le jeu, volontairement), et le commentaire qui prétendait que le rayon du script « reflète exactement » celui du Java, alors qu'il est recopié à la main. Clairière validée par Jérôme le 13/09. |
 | 12/09/2026 | **Étape 12 : la Cascade secrète, seconde variante.** Un affleurement mousseux 15×15×11, deux chutes, un bassin, le socle sur un îlot. **Aucune ligne de Java** : un `variants/waterfall.js` de plus, un `.nbt` de plus, un second `element` dans le `template_pool` — exactement ce que le découpage de l'étape 11 promettait. **Le point qui a demandé le travail : l'eau d'un `.nbt` ne coule pas.** `SinglePoolElement` place en flags **18**, sans `UPDATE_NEIGHBORS`, et `ProtoChunk.setBlockState` ne programme aucun tick de fluide — l'eau reste figée jusqu'à ce qu'un joueur casse un bloc à côté, et là tout se réveille. D'où le choix d'**écrire l'équilibre** plutôt qu'une eau à faire couler : lèvres murées, colonnes en `level=8` toujours au-dessus d'eau, cuvette étanche. Trois relevés le fondent (`LiquidBlock.stateCache` pour la correspondance des `level`, `FlowingFluid.spread` pour « une source s'étale toujours », `isWaterHole` pour « une chute au-dessus d'eau ne s'élargit jamais »). Gain de passage : le `surface_water_depth_filter` de `dark_forest_vegetation` rejette toute colonne mouillée, donc **le fond du bassin a droit à de la vraie terre** — 37 cases de mousse, podzol, terre grossière et argile, les seules des deux fichiers. Quatre contrôles ajoutés à `builder.js`, et celui de la terre détendu pour accepter l'eau comme couverture. **Relecture Opus** : verdict favorable, et deux prises qui ne mordaient pas encore mais qui auraient mordu à la variante suivante. **« Bloquer le mouvement » n'est pas « retenir l'eau »** — `canPassThroughWall` teste l'*identité* avec le cube plein, donc dalles, escaliers et murets laissent fuir un bassin tout en passant le contrôle ; d'où un ensemble `FULL_CUBE` distinct, dont sont aussi exclus les cubes *waterloggables* qui se remplissent au lieu de retenir. Et le contrôle de source ne regardait **que les 4 côtés**, alors que `spread` essaie le bas en premier. Elle a aussi corrigé une erreur de fait que j'avais propagée jusque dans le mémo machine : le `surface_water_depth_filter` est sur `dark_forest_vegetation`, pas sur `dark_oak_leaf_litter` qui ne porte que le prédicat de plant ; et le tag `#supports_vegetation` compte **onze** blocs, pas treize. Enfin, la falaise est **plafonnée à 4 sur sa rangée arrière** : au ras du bord d'emprise, `beard_thin` ne construit rien derrière, et une paroi de 8 aurait été un mur nu planté dans la forêt. **Choix de Jérôme** : le bassin reste à **un bloc de profondeur** — creuser aurait voulu dire monter les berges d'un cran, et le profil bas prime. |
