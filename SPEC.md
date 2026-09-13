@@ -682,39 +682,184 @@ du modèle d'item applique un demi-tour autour de Y, qui reflète ça à **135°
 d'où une rotation de 45° qui couche la lame à l'horizontale au lieu de la
 redresser. La bonne valeur est **135°**, qui amène la pointe à 270° : droit vers
 le bas.
-- Décor : une ruine **9×9**, posée par un `single_pool_element` et donc éditable
-  en jeu au block-editor. Réalisé à l'étape 8, avec deux écarts sur ce qui était
-  prévu ici, tous deux constatés en jeu :
-  - **pas de lumière au sol** — les `shroomlight` faisaient tache dans la
-    pénombre de la forêt ;
-  - **pas un bloc de terre ni d'herbe**, et l'emprise **entièrement pavée** de
-    pierre. Ce n'est pas un choix esthétique : `surface_structures` s'exécute
-    avant `vegetal_decoration`, donc un arbre posé ensuite pousse au travers de
-    la structure. Lui refuser un sol où s'enraciner est le seul moyen de garder
-    la clairière dégagée, et le 9×9 tient compte du tronc 2×2 du dark oak.
+- Décor : une **clairière forestière 17×17×13**, posée par un
+  `single_pool_element` et donc éditable en jeu au block-editor. Validée par
+  Jérôme le 13/09/2026, au terme de trois essais en jeu.
 
-  Le relief vient de la **matière** — mousse, pierre taillée, fissurée, gravier,
-  andésite, tapis de mousse, 10 blocs en tout — tirée par un hasard déterministe,
-  plus moussue au centre et plus délavée au bord.
+  - **pas de lumière au sol, et pas de lanterne** (décision du 13/09) — les
+    `shroomlight` faisaient tache dans la pénombre, et la référence à lanternes
+    de la cascade a été écartée pour la même raison. Seuls le lichen lumineux sur
+    la roche et un rare `firefly_bush` éclairent quelque chose ;
+  - **emprise creuse** : seules les colonnes du décor sont listées, tout le reste
+    garde le sol de la forêt. C'est ce qui a réglé le « c'est trop carré » ;
+  - un **gradin unique** : le tablier est **à fleur** de l'herbe, l'anneau de
+    demi-dalles une demi-marche plus haut, la terrasse un bloc au-dessus, et le
+    sommet du socle à **2 blocs** du sol ;
+  - le **socle est en (8, 2, 8)** ;
+  - le décor : deux arches de 3 de haut, un pan de mur brisé, neuf moignons, des
+    amas de **racines de palétuvier**, trois **gros champignons**, des lianes, et
+    **cinq chênes noirs plantés par la structure elle-même** (troncs 2×2,
+    couronne large) pour remettre de la canopée au-dessus du sanctuaire ;
+  - une **prairie** de vraie herbe, fougères, grandes fougères, muguet, bleuets
+    et buissons, posée en `y=1` **sur** le sol de la forêt.
 
-🔷 **Prévu en v2 : plusieurs variantes de ruine.** Le `template_pool` accepte
-déjà une liste d'`elements` avec un `weight` chacun, et le jigsaw applique une
-rotation aléatoire à la pièce tirée : ajouter des variantes ne demande **aucun
-code**, seulement d'autres `.nbt` et des entrées dans le pool. Côté outillage,
-`tools/structure/build_structure.js` est écrit pour une structure unique ; il
-faudra le paramétrer pour qu'il produise plusieurs fichiers.
+  Le relief vient de la **matière** — pierre moussue, taillée, fissurée, ciselée,
+  gravier, andésite — tirée par un hasard déterministe, plus moussue au centre et
+  plus délavée au bord.
+
+⚠️ **`y=0` est le bloc de surface, pas l'air au-dessus.** `JigsawPlacement`
+ancre la pièce avec `box.minY() + getGroundLevelDelta() == firstFreeHeight`, et
+`StructurePoolElement.getGroundLevelDelta()` vaut **1** : le `y=0` du template
+**remplace la motte**. Poser une fleur en `y=0`, ou y écrire de l'air, creuse un
+trou d'un bloc dans le tapis forestier — ce qu'un essai en jeu a montré, semé
+tout autour de la terrasse. Tout ce qui doit se poser *sur* le sol va en `y=1`.
+
+#### Ce qui fait pousser un arbre dans une structure de surface
+
+`surface_structures` passe avant `vegetal_decoration`, donc les arbres sont posés
+**après** la structure. La formule retenue à l'étape 8 — « aucun bloc de
+`#minecraft:dirt` » — était le bon réflexe et la mauvaise liste. La chaîne
+réelle, relue dans le jar 26.2 :
+
+`configured_feature/dark_forest_vegetation` est tiré **16 fois par chunk** sur la
+heightmap `OCEAN_FLOOR` ; avec une chance de **0,667** il appelle
+`placed_feature/dark_oak_leaf_litter`, dont le seul filtre est
+`would_survive(dark_oak_sapling)` → `VegetationBlock.canSurvive` → le bloc
+**sous** la position doit être dans **`#minecraft:supports_vegetation`**, soit
+**onze blocs** : `dirt`, `coarse_dirt`, `rooted_dirt`, `mud`,
+`muddy_mangrove_roots`, `moss_block`, `pale_moss_block`, `grass_block`,
+`podzol`, `mycelium`, `farmland`.
+
+D'où le chiffre qui décide : **une case de terre à découvert vaut ~4 % de risque
+d'arbre**. ⚠️ **Chiffre corrigé le 13/09/2026 : c'est ~5,8 %, pas 4 %.** Le
+`random_selector` ne tire pas un arbre deux fois sur trois mais **92 % du
+temps** — `dark_oak_leaf_litter` en fait les deux tiers, mais
+`birch_leaf_litter`, `fancy_oak_leaf_litter` et le défaut `oak_leaf_litter` sont
+**aussi** des features `minecraft:tree`, et seuls les deux champignons géants
+(7,4 %) et les deux troncs couchés (0,4 %) n'en sont pas. Et l'arbre ne fait pas
+que pousser : son tronc **retourne en terre les 4 cases sous lui** et se penche
+jusqu'à 2 blocs en montant — mettre la terre loin du socle ne protège donc pas
+le socle.
+
+Quatre parades existent, toutes vérifiées. **C'est la quatrième qui est retenue
+depuis l'étape 13** ; les autres restent disponibles et servent encore là où
+elles tombent bien :
+
+| Parade | Coût | Ce qu'elle autorise |
+| --- | --- | --- |
+| **Sol non porteur** — *retenue pour la clairière* | rien | pierre, `moss_carpet`, `leaf_litter`, feuilles, `mangrove_roots` |
+| **Eau au-dessus** | rien | **n'importe quel sol** : `dark_forest_vegetation` — le `placed_feature` extérieur, celui des 16 tirages, et non `dark_oak_leaf_litter` qui ne porte que le prédicat — filtre sur `surface_water_depth_filter` à `max_water_depth: 0` et rejette toute colonne où `WORLD_SURFACE − OCEAN_FLOOR > 0` |
+| **Abri au-dessus** | un linteau | herbe et fougères dans les creux : la heightmap ne retient que le sommet bloquant |
+| **Verrou Java** — *retenue depuis l'étape 13* | un mixin, voir §4.4 | **tout** : herbe, terre, podzol, fougères, fleurs, n'importe où |
+
+À proscrire : retirer la feature du biome par `BiomeModifications`, qui
+supprimerait les chênes noirs de **toute** la forêt.
+
+Deux relevés qui servent à choisir les blocs : `LeafLitterBlock` **surcharge** le
+`canSurvive` de `VegetationBlock` et ne demande qu'une face solide — c'est la
+seule plante qui tienne sur la pierre ; et un petit champignon exige
+`#overrides_mushroom_light_requirement` dessous (podzol, mycélium) **ou** une
+luminosité < 13, que le plein jour d'une clairière ne donne pas — d'où les gros
+champignons, qui n'ont aucune règle de survie.
+
+#### Plusieurs variantes de ruine
+
+Le `template_pool` accepte une liste d'`elements` avec un `weight` chacun, et le
+jigsaw applique une rotation aléatoire à la pièce tirée : ajouter une variante ne
+demande **aucun code**, seulement un `.nbt` de plus et une entrée dans le pool.
+
+L'outillage a été découpé pour ça à l'étape 11 :
+
+| Fichier | Rôle |
+| --- | --- |
+| `tools/structure/nbt.js` | lecteur/écrivain NBT, sans dépendance |
+| `tools/structure/builder.js` | canevas de blocs, tirage déterministe, **et les auto-contrôles** |
+| `tools/structure/variants/<id>.js` | une variante : ses dimensions, sa graine, son décor |
+| `tools/structure/build_structure.js` | le lanceur : construit chaque variante, l'écrit, **la relit et la contrôle** |
+
+🔷 **Une seule variante**, décidée le 13/09/2026 : `clearing` — Clairière
+forestière, **17×17×13**, socle en **(8, 2, 8)**, validée en jeu.
+
+⚠️ **La Cascade secrète est abandonnée.** Quatre versions ont été essayées en
+jeu, et aucune n'a convaincu Jérôme : « le résultat n'est pas top ». Ce que
+chacune a coûté vaut d'être noté, parce que le savoir reste utile même si la
+variante ne reste pas.
+
+| Version | Pourquoi elle a échoué |
+| --- | --- |
+| Chute verticale de 6 | « une colonne d'eau qui coule, ça ne fait pas très naturel » |
+| Fente à deux étages | « ça fait plutôt un étage » — deux sources murées empilées se lisent comme une seule |
+| **Capture** du build de Jérôme | les trois quarts d'une capture sont le **terrain** du monde, et un terrain ne se transplante pas : posé ailleurs, aplani par `beard_thin`, il ressort en pierre suspendue en l'air |
+| Déversoir **généré** | correct techniquement, mais le rendu n'y était toujours pas |
+
+Ce que l'épisode a appris, et qui survit à la variante :
+
+- **le niveau d'un écoulement est sa distance à la source**, un par bloc
+  (`dropOff` vaut 1 pour l'eau), et il passe à 8 quand la case du dessous est
+  vide. Relevé sur le build de Jérôme, pas sur la doc ;
+- **une case n'est `falling` que si elle est alimentée par le dessus** — entre
+  deux marches, elle l'est par le côté ;
+- un `.nbt` ne peut donc contenir qu'une eau **déjà au repos**, et les seuls
+  états dont je sache le prouver seul restent la source et la chute pleine ;
+- `tools/structure/anvil.js` et `capture.js` sont nés là : ils lisent un monde
+  sauvegardé, retrouvent le socle et relisent ce qui l'entoure. Ils ne servent
+  plus à produire une variante, mais ils restent le moyen de **savoir ce qu'une
+  génération a réellement produit** plutôt que de le deviner sur une capture
+  d'écran.
+
+#### L'eau d'un `.nbt` ne coule pas : il faut poser l'équilibre soi-même
+
+`SinglePoolElement` place ses blocs avec les flags **18**
+(`UPDATE_CLIENTS | UPDATE_KNOWN_SHAPE`) — **pas** `UPDATE_NEIGHBORS` — et
+`ProtoChunk.setBlockState` ne programme aucun tick de fluide. L'eau du fichier
+reste donc **figée** jusqu'à ce qu'un joueur touche un bloc voisin, et là **tout
+se réveille d'un coup**. Écrire « une source en haut, elle coulera bien » donne
+une cascade qui ne coule pas, puis qui se réorganise dans le dos du joueur.
+
+Trois relevés permettent d'écrire directement l'état que le jeu recalculerait :
+
+- `LiquidBlock` (constructeur) : `level=0` = source, `level=1..7` = écoulement
+  horizontal, **`level=8` = `getFlowing(8, true)`**, l'eau qui tombe, pleine.
+- `FlowingFluid.spread` : une case **non-source** ne s'étale sur les côtés que si
+  `!isWaterHole(...)`, et `isWaterHole` renvoie **vrai** dès que la case du
+  dessous porte le même fluide → **une colonne qui tombe au-dessus d'eau ne
+  s'élargit jamais**.
+- La même ligne : une **source** s'étale *toujours*. Elle n'est sûre que **murée**.
+
+D'où la recette de la cascade :
+
+| Élément | État posé | Pourquoi il ne bouge pas |
+| --- | --- | --- |
+| Lèvre de chute | `water` **source**, cube plein sur les 4 côtés et dessous | ne peut aller que vers le bas, et le bas est déjà de l'eau |
+| Colonne | `water[level=8]` de haut en bas | eau en dessous → `isWaterHole` → aucun étalement |
+| Bassin | **sources** à ras bord d'une cuvette étanche | aucun voisin horizontal n'est de l'air |
+
+⚠️ « Murer » est plus strict que « bloquer le mouvement » :
+`FlowingFluid.canPassThroughWall` teste l'**identité** avec le cube plein
+(`targetShape == Shapes.block()`), donc une dalle, un escalier ou un muret
+laissent passer l'eau bien qu'ils bloquent le mouvement — et un cube plein
+*waterloggable* (racines de palétuvier, feuilles) ne la retient pas davantage, il
+se remplit. Le script tient donc **deux** ensembles distincts.
 
 **Ce que chaque variante doit tenir**, sous peine de casser en silence une
-mécanique décidée ailleurs dans ce document. Les auto-contrôles en fin de script
-couvrent déjà les quatre points : quand il produira plusieurs fichiers, il faudra
-**les faire tourner par fichier**, pas une fois pour toutes.
+mécanique décidée ailleurs dans ce document. Les auto-contrôles de `builder.js`
+sont rejoués **sur chaque fichier produit**, relu depuis le disque.
 
 | Invariant | Pourquoi | Se voit comment si c'est raté |
 | --- | --- | --- |
 | Le socle porte `shrine: 1b` dans son `nbt` | c'est le seul endroit d'où vient le drapeau (§5) | **aucun brouillard**, jamais, sans un mot dans le log |
 | Le socle porte aussi `sword` et `fog_consumed: 0b` | l'épée est plantée dès la génération, sans code | socle vide à la sortie de terre |
-| Emprise **entièrement pavée**, aucun bloc de `#minecraft:dirt` | `surface_structures` passe avant `vegetal_decoration` | un chêne noir pousse au travers, quelques jours plus tard |
+| **Rien d'écrit en `y=0`** qui ne soit un bloc plein voulu | `y=0` est le bloc de surface : une plante ou de l'air y creuse un trou dans le tapis forestier | des cuvettes d'un bloc semées autour du décor |
+| Le **socle est dans le disque gardé** | c'est la seule chose que le verrou Java doit absolument couvrir | un tronc contre l'épée |
+| Toute case de `#minecraft:supports_vegetation` est **comptée** — sous abri, sous l'eau, ou hors du disque | depuis l'étape 13 le verrou remplace la palette ; le compte dit ce qui survivrait si le mixin ne s'appliquait pas | un chêne noir sur la butte, ce qui est voulu, ou sur la terrasse, ce qui ne l'est pas |
+| Tout bloc de la palette est **classé** dans `BLOCKS_MOTION` ou `FREE_OF_MOTION` | un bloc non classé est lu « n'abrite pas » et « ne mure pas l'eau » — du bon côté, mais en silence | rien, jusqu'au jour où ça compte |
+| Toute **source d'eau** a un cube plein ou de l'eau sur ses 4 côtés **et dessous** | une source s'étale toujours, et `spread` essaie le bas en premier | la berge noyée, au premier bloc cassé par le joueur |
+| Toute case **`level=8`** a de l'eau juste **en dessous** et juste **au-dessus** | `isWaterHole` est ce qui empêche une chute de s'élargir ; le dessus est ce qui l'alimente | la chute s'élargit en nappe, ou s'assèche |
+| **Aucun `level` entre 1 et 7**, et aucune case d'eau sur le bord de l'emprise | les états d'écoulement horizontal ne se figent pas ; hors emprise il y a du terrain, pas de l'air | l'eau fuit dans la forêt |
 | Clairière assez large pour un tronc 2×2 | le dark oak est un arbre à quatre pieds | un tronc contre le socle |
+| Aucun bloc **isolé en plein air** | une erreur d'ordre dans un triplet de coordonnées | un bloc en lévitation, repéré des semaines après |
+| **Colonne du socle dégagée** | la lame est dessinée dans la case au-dessus de la pierre | l'épée enterrée |
+| Tout petit champignon a du **podzol ou du mycélium** dessous | sinon il lui faut une luminosité < 13, que le plein jour ne donne pas | le décor se vide au premier bloc cassé à côté |
 
 Le `template_pool` ne valide rien de tout ça : une variante fautive se génère
 sans erreur, et c'est en jeu, des semaines après, qu'on s'en aperçoit.
@@ -814,6 +959,54 @@ le socle se comporte comme un coffre : son interaction l'emporte sur la pose d'u
 bloc contre lui, et s'accroupir contourne les deux.
 
 ---
+
+### 4.4 Le verrou contre les arbres ✅ — **fait (étape 13)**
+
+Les étapes 11 et 12 ont passé beaucoup d'énergie à choisir des blocs qui ne
+portent pas d'arbre. Le résultat tenait, mais il coûtait au sanctuaire **chaque
+brin d'herbe** : un sol qui ne pouvait être que minéral, et c'est ce qui faisait
+lire les deux variantes comme un rectangle pavé posé dans la forêt. Jérôme a
+demandé « il n'y a pas un autre moyen, comme ça je peux utiliser plus de blocs ».
+Il y en avait un.
+
+**`ShrineGuard.vetoes(WorldGenLevel, BlockPos)`** répond « cet arbre est-il dans
+un sanctuaire ? », et trois mixins `HEAD` annulables l'interrogent :
+`TreeFeature`, `AbstractHugeMushroomFeature` et `FallenTreeFeature` — les trois
+classes que `dark_forest_vegetation` peut poser. La chaîne est publique de bout
+en bout :
+
+```java
+region.getLevel().structureManager().forWorldGenRegion(region)   // le seul handle d'une feature
+      .startsForStructure(SectionPos.of(pos), shrine)            // références du chunk
+StructureStart.getBoundingBox()
+```
+
+C'est le chemin de vanilla lui-même : `ChunkGenerator.applyBiomeDecoration` — la
+méthode dans laquelle nos mixins s'exécutent — construit le même gestionnaire
+scopé à la région et appelle `startsForStructure` pour chaque structure, à chaque
+étape de décoration.
+
+Quatre choix, tous payés par un essai en jeu :
+
+| Choix | Pourquoi |
+| --- | --- |
+| Un **disque**, pas la boîte | interdire les arbres sur tout le carré creuse un **trou carré dans la canopée** : le même défaut, déplacé du sol vers le ciel |
+| Rayon **constant de 5 blocs** | deux tentatives dimensionnées sur l'emprise ont laissé un anneau d'herbe nue entre le sanctuaire et la forêt. Le verrou ne protège que la terre autour de l'épée ; la pierre, l'eau et la maçonnerie ne portent de toute façon pas d'arbre |
+| **`y` ignoré** | un tronc est refusé dans toute la colonne, quelle que soit l'altitude choisie par la heightmap |
+| **Worldgen seulement** (`instanceof WorldGenRegion`) | une pousse que le **joueur** fait grandir à l'os passe par le `ServerLevel` : il peut planter son arbre dans le sanctuaire s'il veut. Vérifié en jeu le 13/09 |
+
+Garde-fou : la région ne détient ses chunks qu'à distance 1 au statut `FEATURES`
+(`ChunkPyramid` : `addRequirement(STRUCTURE_STARTS, 8)` et `(CARVERS, 1)`), et
+lui en demander un plus loin **lève** au lieu de renvoyer `null`. Le verrou
+renonce au-delà de 1 — inatteignable avec les features vanilla, dont l'origine
+est toujours dans le chunk central, mais un autre mod plaçant un arbre plus loin
+ferait planter la génération, et le plantage aurait notre nom dessus.
+
+🔷 **Portée réelle du verrou.** Le raisonnement « le décor se défend seul » vaut
+pour la clairière : son tablier de pierre tient entièrement dans le disque, et
+la prairie autour pousse sur le sol de la forêt, où un arbre est le bienvenu. Il
+ne valait **pas** pour la cascade, dont la butte était en herbe par conception —
+la relecture du 13/09 l'avait relevé, et la variante a été abandonnée depuis.
 
 ## 5. Le brouillard ✅
 
@@ -1156,6 +1349,13 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 8 | Génération | structure NBT, `structure_set` calqué sur le manoir, `exclusion_zone` | **fait** 12/09/2026 |
 | 9 | Brouillard | drapeau `shrine`, courbe 50 → 10 blocs, disparition définitive | **fait** 12/09/2026 |
 | 10 | Finitions | sons, particules, advancement de retrait, traductions fr/en, modèle 3D de l'épée **(fait 11/09/2026)** | **fait** 12/09/2026 |
+| 11 | Décor, variante 1 | clairière forestière 13×13 à la place de la ruine plate, outillage découpé pour plusieurs variantes | **fait** 12/09/2026 |
+| 12 | Décor, variante 2 | cascade secrète, second élément du `template_pool` | **fait** 12/09/2026 |
+| 13 | Lever la contrainte des arbres | verrou Java (§4.4), emprise creuse, refonte de la clairière | **fait** 13/09/2026 |
+| 14 | Cascade abandonnée | quatre essais, aucun convaincant ; le mod ne garde qu'une variante | **fait** 13/09/2026 |
+
+Les étapes 11 et 12 sont venues **après** la fin du plan initial : le mod était
+complet à l'étape 10, elles ne touchent que l'apparence de la structure.
 
 La config passe en étape 3, avant tout ce qui a des valeurs à régler : la
 brancher après coup obligerait à repasser sur chaque fichier.
@@ -1175,6 +1375,10 @@ brancher après coup obligerait à repasser sur chaque fichier.
 
 | Date | Décision |
 | --- | --- |
+| 13/09/2026 | **La Cascade secrète est abandonnée ; le mod ne garde que la clairière.** Quatre versions essayées en jeu, aucune convaincante — le détail est en §4.2. Deux leçons valent plus que la variante. **Un terrain ne se transplante pas** : la capture du build de Jérôme était aux trois quarts du sol naturel, et posée sur un autre monde, aplani par `beard_thin`, elle est ressortie en pierre suspendue en l'air. Et **l'eau obéit à une règle simple que je n'avais pas su lire** : le niveau d'un écoulement est sa distance à la source, un par bloc, et une case n'est `falling` que si elle est alimentée par le dessus. Les deux ont été trouvées en **lisant le monde sauvegardé**, pas la documentation : `tools/structure/anvil.js` (lecteur de région Anvil) et `capture.js` sont nés de là et restent, non plus pour produire une variante mais pour savoir ce qu'une génération a vraiment produit. Le `template_pool` ne contient plus qu'un `element`. |
+| 13/09/2026 | **Étape 13 : la contrainte des arbres est levée, et les deux variantes sont refaites.** L'essai en jeu de l'étape 12 était sans appel — « trop carré », la cascade « pas jolie », un « mur de 4 blocs » au nord — et les trois défauts avaient la même cause : le sol ne pouvait être que minéral, et le `.nbt` remplissait sa boîte d'air et de pierre. **Trois leviers, tous vérifiés avant d'écrire.** (1) Un **verrou Java** (§4.4) remplace la palette : trois mixins annulent tout arbre, champignon géant ou tronc couché dont l'origine tombe dans un disque autour du socle. (2) La **liste de blocs d'un `.nbt` peut être creuse** — `placeInWorld` itère la liste et n'exige aucune couverture, vanilla le fait lui-même (`taiga_decoration_1` ne liste que 22 de ses 36 cases) — donc l'emprise a enfin une silhouette. `structure_void` aurait été **posé tel quel** : le jigsaw n'ajoute que `BlockIgnoreProcessor.STRUCTURE_BLOCK`. (3) Deux blocs couleur terre non enracinables trouvés en chemin, `dirt_path` et `packed_mud`. **L'erreur de fond, trouvée par la relecture Opus : `y=0` est le bloc de surface, pas l'air au-dessus** — `JigsawPlacement` ancre sur `box.minY() + getGroundLevelDelta()` avec un delta de **1**. Toute la prairie que je posais en `y=0` *remplaçait* la motte : l'essai en jeu montrait des cuvettes d'un bloc semées autour de la terrasse. Décor remonté en `y=1`, remplissage d'air démarré à `y=1`. **Second chiffre corrigé : le `random_selector` tire un arbre à 92 %, pas 2/3** — `birch_leaf_litter`, `fancy_oak_leaf_litter` et le défaut `oak_leaf_litter` sont aussi des features `minecraft:tree` — soit **5,8 %** de risque par case de terre à découvert et non 4 %. **Trois réglages demandés par Jérôme en jeu** : le disque du verrou resserré deux fois, jusqu'à un **rayon constant de 5** (le dimensionner sur l'emprise laissait un anneau d'herbe nue entre le sanctuaire et la forêt) ; **cinq chênes noirs plantés par la clairière elle-même**, pour remettre de la canopée ; et la cascade refaite en **deux étages** d'après une référence, parce qu'une colonne d'eau isolée « ne fait pas très naturel ». Le deux-étages tient sans un seul état d'écoulement intermédiaire parce que **chaque étage a sa source murée**, la vasque intermédiaire servant de quatrième mur à la seconde. **Relecture Opus, deux passes.** La première a bloqué le commit sur trois points, tous corrigés : le `y=0`, les champignons géants et troncs couchés que `TreeFeature` ne voyait pas, et `clearSkyOverBuiltColumns` qui écrivait en `y=0`. La seconde a validé l'eau à deux étages cellule par cellule, et corrigé deux affirmations : « une source s'étale toujours latéralement » est **incomplet** (`spread` sort tôt si elle peut couler vers le bas, sauf à partir de trois sources voisines — notre contrôle est donc plus strict que le jeu, volontairement), et le commentaire qui prétendait que le rayon du script « reflète exactement » celui du Java, alors qu'il est recopié à la main. Clairière validée par Jérôme le 13/09. |
+| 12/09/2026 | **Étape 12 : la Cascade secrète, seconde variante.** Un affleurement mousseux 15×15×11, deux chutes, un bassin, le socle sur un îlot. **Aucune ligne de Java** : un `variants/waterfall.js` de plus, un `.nbt` de plus, un second `element` dans le `template_pool` — exactement ce que le découpage de l'étape 11 promettait. **Le point qui a demandé le travail : l'eau d'un `.nbt` ne coule pas.** `SinglePoolElement` place en flags **18**, sans `UPDATE_NEIGHBORS`, et `ProtoChunk.setBlockState` ne programme aucun tick de fluide — l'eau reste figée jusqu'à ce qu'un joueur casse un bloc à côté, et là tout se réveille. D'où le choix d'**écrire l'équilibre** plutôt qu'une eau à faire couler : lèvres murées, colonnes en `level=8` toujours au-dessus d'eau, cuvette étanche. Trois relevés le fondent (`LiquidBlock.stateCache` pour la correspondance des `level`, `FlowingFluid.spread` pour « une source s'étale toujours », `isWaterHole` pour « une chute au-dessus d'eau ne s'élargit jamais »). Gain de passage : le `surface_water_depth_filter` de `dark_forest_vegetation` rejette toute colonne mouillée, donc **le fond du bassin a droit à de la vraie terre** — 37 cases de mousse, podzol, terre grossière et argile, les seules des deux fichiers. Quatre contrôles ajoutés à `builder.js`, et celui de la terre détendu pour accepter l'eau comme couverture. **Relecture Opus** : verdict favorable, et deux prises qui ne mordaient pas encore mais qui auraient mordu à la variante suivante. **« Bloquer le mouvement » n'est pas « retenir l'eau »** — `canPassThroughWall` teste l'*identité* avec le cube plein, donc dalles, escaliers et murets laissent fuir un bassin tout en passant le contrôle ; d'où un ensemble `FULL_CUBE` distinct, dont sont aussi exclus les cubes *waterloggables* qui se remplissent au lieu de retenir. Et le contrôle de source ne regardait **que les 4 côtés**, alors que `spread` essaie le bas en premier. Elle a aussi corrigé une erreur de fait que j'avais propagée jusque dans le mémo machine : le `surface_water_depth_filter` est sur `dark_forest_vegetation`, pas sur `dark_oak_leaf_litter` qui ne porte que le prédicat de plant ; et le tag `#supports_vegetation` compte **onze** blocs, pas treize. Enfin, la falaise est **plafonnée à 4 sur sa rangée arrière** : au ras du bord d'emprise, `beard_thin` ne construit rien derrière, et une paroi de 8 aurait été un mur nu planté dans la forêt. **Choix de Jérôme** : le bassin reste à **un bloc de profondeur** — creuser aurait voulu dire monter les berges d'un cran, et le profil bas prime. |
+| 12/09/2026 | **Étape 11 : la ruine plate devient une clairière forestière.** D'après un rendu fourni par Jérôme ; la Cascade secrète suivra comme seconde variante. **Aucune ligne de Java**, un `.nbt` de plus et un `template_pool` repointé. L'outillage est découpé — `builder.js` (canevas, tirage, **auto-contrôles**) + `variants/<id>.js` + un lanceur — pour que la cascade ne soit qu'un fichier de plus, et les contrôles sont rejoués **par fichier**, comme §4.2 le demandait. **Le vrai apport de l'étape est une correction de fait** : la règle « aucun bloc de `#minecraft:dirt` » de l'étape 8 était la mauvaise liste. Le verrou est `#minecraft:supports_vegetation` (**onze** blocs), lu par `would_survive(dark_oak_sapling)` sur la heightmap `OCEAN_FLOOR`, tiré **16 fois par chunk** avec 2/3 de chance — soit **~4 % de risque d'arbre par case de terre à découvert**, et un tronc qui **retourne en terre les 4 cases sous lui** en se penchant de 2 blocs. Trois parades vérifiées, dont deux nouvelles : l'**abri** (la heightmap ne voit que le sommet bloquant) et l'**eau** (`surface_water_depth_filter` à `max_water_depth: 0` rejette toute colonne mouillée) — cette dernière rendra un vrai sol de terre à la cascade. Le tout reporté dans `../SETUP-MC-MODDING.md`, où la vieille formule était aussi écrite. **Deux retours de Jérôme en jeu** : plateforme **descendue** de deux gradins à un seul (sommet du socle à 2 blocs du sol, non 4), et **toute l'herbe retirée** — puisqu'elle exigeait des abris, autant supprimer la terre et faire le vert aux **blocs de feuilles**, tapis de mousse, litière et racines de palétuvier. Le fichier ne contient donc plus **aucun** bloc enracinable, et l'invariant devient trivial. **Relecture Opus** : a attrapé les champignons — un petit `red_mushroom` sur la pierre à ciel ouvert exige une luminosité < 13, or il fait 15 en plein jour, donc il survit à la génération puis **disparaît au premier bloc cassé à côté** ; remplacés par des **gros champignons** (`mushroom_stem` + `red_mushroom_block`), qui n'ont aucune règle de survie. Elle a aussi trouvé un moignon posé sur une **demi-dalle** du bord de terrasse, donc en lévitation d'un demi-bloc, et relevé que j'écrivais « treize blocs » pour une liste qui en compte onze. Trois contrôles ajoutés dans la foulée : aucun bloc isolé en plein air, colonne du socle dégagée, et pavage exigé **bloquant** et non plus seulement « non-air ». Deux bugs trouvés avant elle en relisant les cartes couche par couche : les touffes de feuilles étaient indexées `[x, y, z]` au lieu de `[x, z, y]`, l'une au sol et l'autre **flottant à `y=7`**. |
 | 12/09/2026 | **Étape 10 faite : le plan est terminé.** Sons, particules, advancement et traductions, **sans un seul asset nouveau** — que des sons et des particules vanilla, faute de pouvoir composer un `.ogg`. Les effets continus se partagent selon leur propriétaire : les étincelles suivent **l'épée** (n'importe quel socle), le bourdonnement suit **le lieu** (sanctuaire non réclamé, même condition que le brouillard), sans quoi replanter l'épée chez soi ferait ronronner un socle décoratif à jamais. L'advancement repose sur un **déclencheur maison** enregistré dans `BuiltInRegistries.TRIGGER_TYPES` — public, donc sans mixin, `CriteriaTriggers.register` étant privé — parce qu'`inventory_changed` se serait déclenché sur un `/give` ou en créatif. Le Java reste générique, le JSON choisit l'épée qui compte : c'est la forme d'`UsedTotemTrigger`. **Pas de sous-agent de relecture**, aucune catégorie obligatoire de `CLAUDE.md` n'étant touchée ; vérifié par le build, la validation des JSON, le compte d'advancements chargés (1689 contre 1688 en vanilla, preuve que le nôtre est parsé) et l'essai en jeu. ⚠️ L'essai a justement trouvé ce que la relecture aurait vu : **`Inventory.add` vide la pile qu'on lui passe**, et `ItemStack.getItem()` répond `AIR` à compte nul, donc tester « est-ce l'Épée de Légende ? » après l'avoir donnée au joueur sautait en silence le son, la gerbe **et** l'advancement. L'identité se lit désormais avant la remise. Second retour de Jérôme : la note ajoutée à la pose est retirée, le son redevient celui de toutes les épées. |
 | 12/09/2026 | **Étape 9 faite : le brouillard.** Deux surprises, toutes deux dans le sens du moins de code. **Aucun paquet réseau n'a été écrit** : `getUpdateTag` renvoie `saveCustomOnly` depuis l'étape 7, donc l'état complet du socle était déjà côté client — la « synchro serveur → client » annoncée au plan était faite d'avance. Et **la `SavedData` de §5 a été abandonnée** au profit d'un drapeau **`shrine`**, posé uniquement par le `.nbt` de la structure et sans setter en Java (choix de Jérôme). Elle ne voyait pas le cas qui compte : replanter l'épée dans un socle posé chez soi aurait levé un brouillard permanent sur la base. Le drapeau règle les deux, et meurt avec le socle qu'on casse. Côté rendu, **Fabric n'a aucune API de brouillard** — les 66 jars du cache passés en revue, zéro classe qui mentionne `Fog` — donc un mixin sur `FogRenderer.setupFog`, public et qui **renvoie** le `FogData` : injection en `RETURN`, ni `@Local` ni ordinal, une config de mixins client séparée pour les source sets. Tout est en `Math.min` contre ce que vanilla a posé : le brouillard ne peut qu'ajouter. **Relecture Opus** : a attrapé un bug qui rendait la fonctionnalité **totalement inopérante**. Filtrer sur `isShrine()` dans l'écouteur `BLOCK_ENTITY_LOAD` ne marche pas — Fabric tire l'événement depuis `LevelChunk.setBlockEntity`, au `Map.put`, soit l'offset 5 de `lambda$replaceWithPacketData$0`, alors que `loadWithComponents` ne lit le NBT qu'à l'offset 52 : au moment de l'événement **tous les champs valent encore leur défaut**. Vérifié au bytecode avant correction. Le tri se fait désormais par image, après chargement. Deux autres prises au passage : la recoloration n'était pas gardée et **rendait de la vue sous Cécité** (les distances, elles, étaient inattaquables), et `remove(clé)` au déchargement pouvait effacer l'entrée du socle **suivant** à la même position, vanilla posant le nouveau avant de retirer l'ancien. **Deux essais en jeu pour calibrer la courbe**, chacun sur une erreur de fait plutôt que de code. Un brouillard se lit comme un **rapport** de distances : interpoler droit laissait la portée à 91 blocs quand le joueur était à 20 blocs du socle, invisible sous la canopée — d'où une division de la portée à chaque pas, et l'abandon de la courbe quadratique de §5 qui aggravait le même défaut. Puis **`FOG_END_DISTANCE` vaut 1024 et non la distance de rendu** (celle-ci est dans l'autre paire de bornes du shader, combinée par un `max`), et aucun biome vanilla ne la surcharge : diviser 1024 demande une rampe en **racine carrée** — l'inverse exact du carré de départ — sans quoi l'épée restait brumée à 55 % seulement à 20 blocs. Relevé au passage et corrigé dans le code comme dans le mémo : le shader lit `d <= fogStart` comme **aucun** brouillard, donc un `start` qui dépasse `end` ne l'affaiblit pas, il le supprime. Rendu validé par Jérôme le 12/09/2026. |
 | 12/09/2026 | **Étape 8 faite : la structure se génère.** Tout en données, **zéro ligne de Java** — c'est l'option A de §4.1. Quatre fichiers : le `structure_set` (spacing **72**, separation 20, `triangular`, salt 48271393, `exclusion_zone` vers `minecraft:woodland_mansions` à `chunk_count: 8` = 128 blocs), la `structure` jigsaw de surface, le `template_pool` à un seul `single_pool_element`, et un tag de biome sur `minecraft:dark_forest`. Le `.nbt` est **produit par script** (`tools/structure/`, avec un encodeur NBT maison, relu après écriture) plutôt qu'enregistré depuis un structure block : il reste diffable et reproductible, et rouvrable en jeu pour retouche. **Le socle porte ses données de `BlockEntity` dans le `.nbt`** — comme les coffres vanilla portent leur loot table — donc l'épée est plantée dès la génération, sans une ligne de code. Deux pièges payés comptant. **`processors` est obligatoire** dans un `single_pool_element` : l'omettre ne fait rien au démarrage mais **crashe à la création du monde** (`No key processors in MapLike`). Et **`surface_structures` s'exécute avant `vegetal_decoration`** : les arbres sont posés *après* la structure et poussaient au travers — creuser de l'air n'y change rien, seul un sol non enracinable le fait. D'où un sol **100 % pierre** (aucun bloc de `#minecraft:dirt`) et une clairière élargie à 9×9, un tronc de dark oak faisant 2×2. Le décor gagne au passage 8 blocs différents au lieu de 2, par tirage pondéré déterministe. Socle re-texturé en `stone_bricks` / `mossy_stone_bricks` / `chiseled_stone_bricks` : le deepslate jurait avec la ruine grise (§4.2 mis à jour). Contradiction de §4.1 levée : `spacing` vaut **72**, et il ne sera configurable qu'avec l'option B. **Relecture Opus** : a attrapé une contradiction entre le commentaire et le code — le bord irrégulier sautait des cases au hasard, qui gardaient l'herbe d'origine et laissaient **6 carrés 2×2 de sol nu dans l'emprise**, le plus proche à 4,3 blocs du socle, de quoi enraciner le dark oak qu'on prétendait avoir exclu. Corrigé : l'emprise 9×9 est **entièrement pavée**, l'irrégularité vient de la matière et non de trous, et le script vérifie les 81 cases à chaque génération. §4.1 reformulée dans la foulée : les 120 blocs ne sont tenus que pour le manoir, ni pour le portail en ruine ni pour les structures des autres mods. |
