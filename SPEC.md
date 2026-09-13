@@ -1135,6 +1135,33 @@ Sodium ni Iris n'en exposent (vérifié classe par classe dans `sodium.api`, 52
 classes, et `iris.api.v0`, 7 — relevé complet dans `AUDIT-API.md`), et même une
 API n'y changerait rien, puisque le pack ne pose pas la question.
 
+**Le précédent qui tranche : Atmospherics fait pareil.** Le mod d'effets
+atmosphériques de l'instance ne touche à **aucune** classe de
+`net/minecraft/client/renderer/fog/` : son brouillard (`airHaze`) est fait de
+**particules** — `AmbientMistEmitter`, `AmbientMistParticle`, `AirHazeRuntime`,
+donc la route « dessiner soi-même ». Et sous shaderpack, il **s'éteint**, à trois
+endroits indépendants :
+
+```
+AmbientMistEmitter / AmbientFlowMixin :
+    invokestatic  AtmosphericsClient.isShaderPackActive()Z
+    ifeq  <suite>
+    return                         ← pack actif : rien n'est émis
+AmbientMistParticle : rendu conditionné à !isShaderPackActive() && airHazeEnabled
+```
+
+Un mod dont c'est le métier entier, par un auteur qui va jusqu'à désactiver
+automatiquement le « Fog Occlusion » de Sodium Extra
+(`FogConfig.sodiumFogOcclusionAutoDisabled`), renonce sous shaders. La limite
+n'est donc pas la nôtre.
+
+Sa détection, en revanche, est à retenir : `FabricLoader.isModLoaded("iris")`
+puis `Class.forName("net.irisshaders.iris.api.v0.IrisApi")` →
+`getInstance()` → `isShaderPackInUse()`, **entièrement par réflexion**, mise en
+cache et revérifiée périodiquement. **Aucune dépendance de compilation.** Le jour
+où le mod voudrait prévenir le joueur que son shaderpack masque le brouillard du
+sanctuaire, c'est gratuit.
+
 🔷 **Décision de Jérôme, 13/09/2026 : on en reste là.** Sous shaderpack, le
 brouillard appartient au pack. Les deux seules suites possibles étaient un
 brouillard dessiné en géométrie propre — indépendant du moteur, mais un chantier
