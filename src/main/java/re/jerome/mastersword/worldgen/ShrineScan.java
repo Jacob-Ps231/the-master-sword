@@ -29,6 +29,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
@@ -37,7 +38,10 @@ import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureSet;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.level.levelgen.structure.pieces.StructurePiecesBuilder;
 import net.minecraft.world.level.levelgen.structure.placement.RandomSpreadStructurePlacement;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
 import re.jerome.mastersword.MasterSwordMod;
@@ -71,14 +75,19 @@ import re.jerome.mastersword.MasterSwordMod;
  * placement is decided from the seed and the biome noise, so it can be asked
  * directly, without generating a single chunk.
  *
- * <p><b>Nothing about vanilla's decision is reimplemented here.</b> Candidates
- * come from {@code getPotentialStructureChunk} and {@code isStructureChunk},
- * and the verdict comes from {@code Structure.findValidGenerationPoint} itself.
- * A candidate the game rejects is then resolved a second time with an
- * always-true biome predicate, purely to obtain the anchor and footprint the
- * game would have used -- which is what the alternative rules below are scored
- * against. The tool can therefore be wrong about the alternatives, never about
- * what the game does today.
+ * <p><b>Nothing about the decision is reimplemented here.</b> Candidates come
+ * from {@code getPotentialStructureChunk} and {@code isStructureChunk}, and the
+ * verdict comes from {@code Structure.generate} -- the very method the chunk
+ * generator calls, so the mod's own biome rule
+ * ({@link re.jerome.mastersword.mixin.StructureBiomeMarginMixin}) is part of the
+ * answer. A candidate is then resolved once more with an always-true biome
+ * predicate, purely to obtain the anchor and footprint the game would have used
+ * -- without them a refused candidate would have no geometry to be scored on.
+ *
+ * <p>The report carries a <b>control</b>: the rule rebuilt here from its two
+ * halves, compared to the game's verdict on every candidate. One disagreement
+ * and the report says so, in those words, because no other number in it would
+ * mean anything.
  *
  * <p>Development only: this is an instrument, it has no place in the published
  * mod. {@link re.jerome.mastersword.command.MasterSwordCommand} registers it
@@ -108,15 +117,15 @@ public final class ShrineScan {
 	private static final int[] BUCKETS = {8, 16, 32, 64, 128};
 
 	/**
-	 * The rules being compared. "vanille" is the game's own verdict; the others
-	 * are what a fix could plausibly test instead, scored on the same candidates
-	 * in the same pass.
+	 * The rules being compared. The first is what the game actually does, mod
+	 * included; the "marge" rows are what a further margin on top of it would
+	 * still cost.
 	 *
 	 * <p>A "marge N" row with N >= {@link #NEAR} has nothing left on the edge by
 	 * construction -- that is arithmetic, not a result. What those rows are for
 	 * is the other column: how many shrines the margin costs.
 	 */
-	private static final String[] RULES = {"vanille", "controle", "emprise entiere",
+	private static final String[] RULES = {"le jeu, mod compris", "controle",
 			"marge 8", "marge 16", "marge 24", "marge 32"};
 
 	private ShrineScan() {
@@ -248,7 +257,9 @@ public final class ShrineScan {
 	}
 
 	/** One candidate chunk, as the game itself resolved it. */
-	private record Candidate(ChunkPos chunk, BlockPos anchor, BoundingBox box, boolean vanilla, Edge edge) {
+	private record Candidate(
+			ChunkPos chunk, BlockPos anchor, BoundingBox box, List<StructurePiece> pieces,
+			boolean kept, Edge edge) {
 	}
 
 	/** Nearest cell of another biome, Chebyshev distance in blocks. */
@@ -328,20 +339,26 @@ public final class ShrineScan {
 		 * Asks the game where this candidate would go, and whether it would be
 		 * kept.
 		 *
-		 * <p>The first call carries the real biome predicate, so its answer is the
-		 * verdict itself. The second only runs for candidates the game turns down,
-		 * and only to learn the anchor and footprint it had computed before the
-		 * biome test threw them away -- without them the alternative rules would
-		 * have nothing to be scored on.
+		 * <p>The verdict comes from {@code Structure.generate} -- the method the
+		 * chunk generator itself calls -- so it carries the mod's own biome rule
+		 * ({@link re.jerome.mastersword.mixin.StructureBiomeMarginMixin}) and not
+		 * merely vanilla's. Measuring through {@code findValidGenerationPoint}
+		 * would walk past the mixin and keep reporting the placement we had before
+		 * the fix.
+		 *
+		 * <p>The second call, with an always-true biome predicate, is only there
+		 * for the geometry: a refused candidate returns {@code INVALID_START}, and
+		 * without its anchor and footprint the alternative rules would have nothing
+		 * to be scored on.
 		 */
 		private Candidate resolve(long seed, ChunkPos chunk) {
-			Optional<Structure.GenerationStub> stub = findPoint(seed, chunk, valid);
-			boolean vanilla = stub.isPresent();
+			StructureStart start = structure.value().generate(
+					structure, Level.OVERWORLD, registries, generator, biomes, randomState, templates,
+					seed, chunk, 0, level, valid);
+
+			Optional<Structure.GenerationStub> stub = findPoint(seed, chunk, biome -> true);
 			if (stub.isEmpty()) {
-				stub = findPoint(seed, chunk, biome -> true);
-				if (stub.isEmpty()) {
-					return null; // no terrain fit at all; not a biome question
-				}
+				return null; // no terrain fit at all; not a biome question
 			}
 
 			// The anchor is already the middle of the footprint, where the pedestal
@@ -349,8 +366,9 @@ public final class ShrineScan {
 			// So the distance is measured from it, and it is the same point the
 			// game judged.
 			BlockPos anchor = stub.get().position();
-			BoundingBox box = stub.get().getPiecesBuilder().getBoundingBox();
-			return new Candidate(chunk, anchor, box, vanilla, edge(anchor));
+			StructurePiecesBuilder built = stub.get().getPiecesBuilder();
+			BoundingBox box = built.getBoundingBox();
+			return new Candidate(chunk, anchor, box, built.build().pieces(), start.isValid(), edge(anchor));
 		}
 
 		private Optional<Structure.GenerationStub> findPoint(
@@ -392,42 +410,24 @@ public final class ShrineScan {
 
 		/** Would each rule keep this candidate? Same order as {@link #RULES}. */
 		private boolean[] rules(Candidate candidate) {
-			int y = candidate.anchor().getY();
 			boolean[] verdicts = new boolean[RULES.length];
-			verdicts[0] = candidate.vanilla();
-			// The control: vanilla's own test, rewritten here. It has to agree with
-			// the game on every single candidate -- when it does not, the
-			// instrument is lying and no other number in the report means anything.
-			verdicts[1] = valid.test(biomeAt(candidate.anchor().getX(), y, candidate.anchor().getZ()));
-			verdicts[2] = wholeFootprint(candidate.box(), y);
+			verdicts[0] = candidate.kept();
+			// The control: the mod's rule, rebuilt from its two halves -- vanilla's
+			// single cell, then the footprint. It has to agree with the game on
+			// every single candidate; when it does not, the instrument is lying and
+			// no other number in the report means anything.
+			verdicts[1] = valid.test(biomeAt(
+							candidate.anchor().getX(), candidate.anchor().getY(), candidate.anchor().getZ()))
+					&& ShrineStructure.footprintFits(candidate.pieces(), biomes, sampler, valid);
 			for (int i = 0; i < MARGINS.length; i++) {
-				verdicts[3 + i] = candidate.vanilla() && candidate.edge().blocks() >= MARGINS[i];
+				verdicts[2 + i] = candidate.kept() && candidate.edge().blocks() >= MARGINS[i];
 			}
 			return verdicts;
 		}
 
-		/**
-		 * Every biome cell the footprint covers, not a handful of them.
-		 *
-		 * <p>Four corners plus the middle would sample 5 cells out of the 25 to 36
-		 * a 17x17 shrine spans, and would call "whole footprint" a rule that lets
-		 * a river run through the middle of an edge.
-		 */
-		private boolean wholeFootprint(BoundingBox box, int y) {
-			int quartY = QuartPos.fromBlock(y);
-			for (int qx = QuartPos.fromBlock(box.minX()); qx <= QuartPos.fromBlock(box.maxX()); qx++) {
-				for (int qz = QuartPos.fromBlock(box.minZ()); qz <= QuartPos.fromBlock(box.maxZ()); qz++) {
-					if (!valid.test(biomes.getNoiseBiome(qx, quartY, qz, sampler))) {
-						return false;
-					}
-				}
-			}
-			return true;
-		}
-
 		private String report(List<Candidate> candidates, long seed, long millis) {
 			StringBuilder out = new StringBuilder();
-			List<Candidate> kept = candidates.stream().filter(Candidate::vanilla).toList();
+			List<Candidate> kept = candidates.stream().filter(Candidate::kept).toList();
 
 			out.append("seed ").append(seed)
 					.append(", rayon ").append(radius).append(" cellules (spacing ")
@@ -503,7 +503,7 @@ public final class ShrineScan {
 
 			out.append("\nce que chaque regle d'acceptation donnerait :\n");
 			out.append(String.format("  %-18s %8s %9s %8s %8s%n",
-					"regle", "gardes", "% vanille", "bordure", "% bord"));
+					"regle", "gardes", "% du jeu", "bordure", "% bord"));
 			int[] total = new int[RULES.length];
 			int[] onEdge = new int[RULES.length];
 			int disagreements = 0;

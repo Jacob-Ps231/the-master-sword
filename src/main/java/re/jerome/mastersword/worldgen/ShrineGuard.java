@@ -10,7 +10,6 @@ import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
-import re.jerome.mastersword.MasterSwordMod;
 
 /**
  * Keeps trees out of the shrine.
@@ -42,8 +41,7 @@ import re.jerome.mastersword.MasterSwordMod;
  * </ul>
  */
 public final class ShrineGuard {
-	private static final ResourceKey<Structure> SHRINE =
-			ResourceKey.create(Registries.STRUCTURE, MasterSwordMod.id("master_sword"));
+	private static final ResourceKey<Structure> SHRINE = ShrineStructure.KEY;
 
 	private ShrineGuard() {
 	}
