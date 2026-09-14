@@ -12,6 +12,7 @@ import re.jerome.mastersword.registry.ModComponents;
 import re.jerome.mastersword.registry.ModCriteria;
 import re.jerome.mastersword.registry.ModEntityTypes;
 import re.jerome.mastersword.registry.ModItems;
+import re.jerome.mastersword.worldgen.ShrineScan;
 
 public class MasterSwordMod implements ModInitializer {
 	public static final String MOD_ID = "mastersword";
@@ -39,6 +40,10 @@ public class MasterSwordMod implements ModInitializer {
 		// finds it in the registry.
 		ModCriteria.register();
 		MasterSwordCommand.register();
+		// Development only, and only when MASTERSWORD_SCAN is set: the shrine
+		// placement measurement of SPEC question 3, which cannot go through a
+		// command on a headless dev server.
+		ShrineScan.installHeadlessRun();
 		LOGGER.info("The Master Sword is waiting in the dark forest.");
 	}
 }

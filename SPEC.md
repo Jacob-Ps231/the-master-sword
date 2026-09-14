@@ -1513,6 +1513,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 12 | Décor, variante 2 | cascade secrète, second élément du `template_pool` | **fait** 12/09/2026 |
 | 13 | Lever la contrainte des arbres | verrou Java (§4.4), emprise creuse, refonte de la clairière | **fait** 13/09/2026 |
 | 14 | Cascade abandonnée | quatre essais, aucun convaincant ; le mod ne garde qu'une variante | **fait** 13/09/2026 |
+| 15 | Bordure de biome | instrument `/mastersword scan`, taux établi sur 487 sanctuaires (§9) | **mesure faite** 14/09/2026 ; correctif à trancher |
 
 Les étapes 11 et 12 sont venues **après** la fin du plan initial : le mod était
 complet à l'étape 10, elles ne touchent que l'apparence de la structure.
@@ -1528,39 +1529,110 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | --- | --- | --- |
 | 1 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
 | 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
-| 3 | **Le sanctuaire tombe trop souvent en bordure de biome** — rivière ou mer. Signalé par Jérôme à trois reprises, la dernière le 13/09/2026. **Prochaine étape du projet.** | §4.1, et du code de worldgen |
+| 3 | **Le sanctuaire tombe trop souvent en bordure de biome** — rivière ou mer. **Mesuré le 14/09/2026 : 34 à 43 % des sanctuaires sont à moins de 16 blocs d'un autre biome**, sur 487 cas. Reste à choisir le correctif. | §4.1, et du code de worldgen |
 
-### Question 3 — ce qui est déjà établi, pour ne pas le refaire
+### Question 3 — la cause, corrigée le 14/09/2026
 
-**La cause est lue au bytecode, elle n'est pas à chercher.**
-`Structure.isValidBiome` ne teste **qu'un seul point** — `getNoiseBiome` sur le
+**`Structure.isValidBiome` ne teste qu'un seul point** — `getNoiseBiome` sur le
 `QuartPos` de la position du stub, soit **une cellule de 4×4×4 blocs**. Ni
-l'emprise, ni le voisinage. Et `JigsawStructure.findGenerationPoint` construit ce
-point comme `new BlockPos(chunkPos.getMinBlockX(), y, chunkPos.getMinBlockZ())`,
-c'est-à-dire le **coin nord-ouest du chunk** et non son centre : le biome est
-donc validé sur un coin, alors que la structure se bâtit jusqu'à 16 blocs plus
-loin.
+l'emprise, ni le voisinage. Ça, c'est établi et ça ne bouge pas.
+
+⚠️ **En revanche, « le coin nord-ouest du chunk » écrit ici le 13/09 est faux**,
+et c'est une erreur qui envoyait droit dans le mur — c'est elle qui faisait de
+« recentrer l'ancre » une piste crédible. Le coin nord-ouest n'est que
+l'**argument** `position` que `JigsawStructure.findGenerationPoint` passe à
+`JigsawPlacement.addPieces` ; le `GenerationStub` que celle-ci renvoie est bâti
+sur `(maxX + minX) / 2` et `(maxZ + minZ) / 2` de l'emprise de la pièce de
+départ, donc sur le **centre de l'emprise**. Pour notre clairière de 17×17, ça
+tombe 8 blocs à l'intérieur, c'est-à-dire au centre du chunk.
+
+**Vérifié sur le sanctuaire connu** : socle à −4295 / −5356, dans le chunk qui
+commence à −4304 / −5360, point testé à **−4296 / −5352** = `minBlockX + 8`.
+Le jeu juge donc le biome **au milieu du sanctuaire**, et ne regarde rien de ce
+qui l'entoure à moins de 8 blocs.
+
+Le scan porte désormais un **contrôle** : il recalcule le test de vanilla à ce
+point et le compare au verdict du jeu sur chaque candidat. Un seul désaccord
+invalide tout le rapport, et le rapport le dit en toutes lettres.
 
 ⚠️ **L'option B de §4.1 ne corrigerait pas ça.** Un `StructurePlacement` choisit
 des *chunks* et s'écarte d'autres *sets* ; la marge au bord de biome se décide
 dans `Structure`. Ne pas partir là-dessus en croyant faire d'une pierre deux
 coups.
 
-**Mesure disponible : `tools/structure/biome_edge.js`**, qui lit un monde
-sauvegardé, trouve les socles (en ignorant ceux posés à la main, `shrine: 0`) et
-donne pour chacun la distance au premier biome étranger plus une carte des
-biomes. Le seul sanctuaire généré mesuré à ce jour est à **8 blocs d'une
-rivière** dans une Dark Forest de ~370 blocs de côté.
+### Question 3 — le taux, mesuré le 14/09/2026
 
-⚠️ **Mais n = 1** : les autres mondes de la machine sont soit antérieurs au mod,
-soit trop petits. **Premier travail de la reprise : pré-générer quelques milliers
-de chunks de Dark Forest et relancer le scan**, pour connaître le taux réel avant
-de choisir un correctif — l'observation de Jérôme dit « souvent », la mesure ne
-dit encore rien.
+**Deux instruments indépendants, qui se recoupent.**
 
-Pistes à instruire ensuite, aucune tranchée : un `StructureType` maison qui
-échantillonne plusieurs points autour de l'ancre, un mixin sur `isValidBiome`, ou
-un `project_start_to_heightmap` / décalage qui recentre l'ancre dans le chunk.
+- `tools/structure/biome_edge.js` lit un **monde sauvegardé** : il trouve les
+  socles (en ignorant ceux posés à la main, `shrine: 0`) et donne pour chacun la
+  distance au premier biome étranger, plus une carte des biomes.
+- `/mastersword scan [rayon]` (`worldgen/ShrineScan.java`, **dev uniquement**)
+  interroge le **générateur**, sans générer un seul chunk : il énumère les chunks
+  candidats de la grille et demande à `Structure.findValidGenerationPoint` — donc
+  au jeu lui-même — s'il les accepterait. En headless :
+  `MASTERSWORD_SCAN=60 ./gradlew runServer`, qui scanne, écrit
+  `run/mastersword-scan-<seed>.txt` et arrête le serveur.
+
+⚠️ **La pré-génération prévue ici est abandonnée**, pour une raison
+d'arithmétique : une cellule de placement fait 72×72 chunks et ne donne **qu'un**
+candidat, le plus souvent hors Dark Forest. Cent sanctuaires auraient coûté de
+l'ordre du **million de chunks générés**. Le scan en donne 224 en 80 secondes, sans un chunk généré.
+
+**Recoupement des deux outils** : sur « New World (1) », le scan retrouve le
+sanctuaire connu à −4296 / −5352 et annonce **4 blocs d'une rivière**, ce que
+`biome_edge.js` lit dans les chunks sauvegardés par un chemin tout autre.
+⚠️ **Le chiffre de « 8 blocs » écrit ici le 13/09 était faux** : c'est 4.
+
+**Le taux, sur deux seeds et 487 sanctuaires** (rayon 60 cellules, soit ±69 000
+blocs autour de l'origine ; distance prise depuis le centre de l'emprise) :
+
+| Seed | Sanctuaires | À moins de 16 blocs d'un autre biome |
+| --- | --- | --- |
+| 6431809503670250688 (monde de Jérôme) | 224 | 96 — **42,9 %** |
+| 20260914 (monde neuf) | 263 | 90 — **34,2 %** |
+
+L'observation de Jérôme est donc **confirmée et chiffrée** : entre un tiers et
+40 % des sanctuaires sont collés à une bordure. Le voisin est une **rivière** dans
+30 % des cas, une autre forêt (bouleaux, pale garden) dans 40 %, une plage ou un
+rivage dans 11 %.
+
+**Ce que chaque règle d'acceptation donnerait**, évaluée sur les mêmes candidats
+dans la même passe (moyenne des deux seeds) :
+
+| Règle | Sanctuaires gardés | Restant en bordure |
+| --- | --- | --- |
+| **vanille** — une cellule, au centre du sanctuaire | 100 % | 38 % |
+| **emprise entière en Dark Forest** (toutes ses cellules de biome) | **74 %** | **17 %** |
+| marge de 8 blocs autour du sanctuaire | 86 % | 28 % |
+| marge de 16 blocs | 62 % | 0 % |
+| marge de 24 blocs | 47 % | 0 % |
+| marge de 32 blocs | 33 % | 0 % |
+
+Deux lectures à ne pas rater :
+
+- **Il n'y a rien à recentrer.** C'était la piste la plus évidente des trois
+  notées le 13/09, et elle repose entièrement sur le « coin nord-ouest » qui était
+  faux : le point testé est déjà le centre du sanctuaire. Le sanctuaire n'est pas
+  mal placé dans son chunk, il est dans une forêt trop petite ou trop découpée.
+- Les lignes « marge ≥ 16 » affichent 0 % de bordure **par construction** — la
+  règle est la mesure. Ce qu'elles disent de vrai est leur **coût** : une marge de
+  32 blocs supprimerait les deux tiers des sanctuaires.
+
+🔷 **Reste à trancher : quelle règle, et rejeter ou déplacer.** L'emprise entière
+est le seul compromis intéressant du tableau — elle divise les bordures par plus
+de deux en ne coûtant qu'un quart des sanctuaires — mais toutes les règles
+ci-dessus **rejettent** le candidat, ce qui raréfie l'épée alors que §4.1 note
+déjà que la plupart des Dark Forests n'en ont pas. Une piste non mesurée serait
+de **déplacer** le sanctuaire dans son chunk vers un point qui a de la marge, au
+lieu de renoncer : un `StructureType` maison le permet, `findGenerationPoint`
+étant libre de choisir sa position.
+
+Note de placement relevée en chemin, utile à qui écrira le correctif : le point
+testé se trouve à **±8 blocs** du coin nord-ouest du chunk, le signe dépendant de
+la **rotation** tirée pour la pièce de départ. Le sanctuaire n'est donc pas
+toujours centré dans son chunk : selon la rotation, il déborde de 8 blocs au nord
+ou à l'ouest.
 
 ---
 
@@ -1568,6 +1640,7 @@ un `project_start_to_heightmap` / décalage qui recentre l'ancre dans le chunk.
 
 | Date | Décision |
 | --- | --- |
+| 14/09/2026 | **Le taux de sanctuaires en bordure est mesuré, et la pré-génération prévue pour y arriver est abandonnée.** SPEC prévoyait de pré-générer des chunks de Dark Forest et de relancer `biome_edge.js` dessus. C'était sans issue, pour une raison d'arithmétique : un candidat par cellule de 72×72 chunks, presque toujours hors Dark Forest, donc de l'ordre du **million de chunks** pour cent sanctuaires. Le placement se calcule **sans générer un seul chunk** — `getPotentialStructureChunk`, `isStructureChunk` et surtout `Structure.findValidGenerationPoint` sont publics, `GenerationContext` a un constructeur public, et `BiomeSource.getNoiseBiome` + `RandomState.sampler()` donnent les biomes. D'où `worldgen/ShrineScan.java` : 224 sanctuaires en 80 secondes là où la pré-génération aurait tourné des heures. **Rien de la décision vanilla n'y est réimplémenté** : le verdict vient de `findValidGenerationPoint` avec le vrai prédicat (`structure.biomes()::contains`, lu au bytecode de `ChunkGenerator`), et un second appel avec `b -> true` ne sert qu'à récupérer l'ancre et l'emprise des candidats refusés, pour noter les règles alternatives. **Recoupement obligatoire avant d'exploiter le moindre chiffre** : sur le monde de Jérôme, le scan retrouve le sanctuaire connu et annonce 4 blocs d'une rivière, ce que `biome_edge.js` lit dans les chunks sauvegardés par un chemin tout autre — au passage, **les « 8 blocs » notés ici le 13/09 étaient faux**. Résultat, sur deux seeds et 487 sanctuaires : **34 à 43 % à moins de 16 blocs d'un autre biome**, rivière dans 30 % des cas. Jérôme avait raison, et le chiffre est maintenant un chiffre. **Trois pièges payés comptant, tous versés au mémo machine.** (1) `getPotentialStructureChunk(seed, x, z)` prend des **coordonnées de chunk**, pas un index de cellule — elle fait le `floorDiv` par `spacing` elle-même ; lui passer l'index ne plante pas, ça replie les 441 cellules sur les quatre autour de l'origine, et le premier rapport annonçait alors **deux biomes pour le monde entier** et zéro sanctuaire. Ce sont ces deux biomes qui ont trahi le bug, pas une erreur. (2) **Sur le serveur dédié de dev, aucune commande console ne passe** — toutes échouent sans trace, `list` et `seed` vanilla compris, vérifié avec l'arbre de commandes du mod retiré du build ; d'où le déclenchement par `ServerLifecycleEvents.SERVER_STARTED` et `MASTERSWORD_SCAN`. (3) Le **watchdog tue le serveur à 60 s de tick** : un scan large doit partir sur un autre thread même quand personne ne joue. **Et la relecture Opus a défait une affirmation que cette spec donnait pour établie** : le point que `isValidBiome` teste n'est **pas** le coin nord-ouest du chunk. Ce coin n'est que l'argument passé à `JigsawPlacement.addPieces` ; le `GenerationStub` qui en revient est bâti sur `(maxX + minX) / 2` de l'emprise de la pièce de départ, soit le **centre du sanctuaire**. Confondre l'argument et le résultat rendait « recentrer l'ancre » crédible, alors qu'il n'y a rien à recentrer — et la mesure le confirmait déjà sans qu'on sache pourquoi, la règle « centre du chunk » ne changeant rien. Le scan porte désormais un **contrôle** : il recalcule le test de vanilla au point du stub et le compare au verdict du jeu sur chaque candidat — **zéro désaccord sur 27 951 candidats**, deux seeds. La même relecture a aussi montré que la règle « emprise entière » n'échantillonnait que 5 cellules sur 25 à 36 ; elle les parcourt toutes depuis. **Le correctif n'est pas choisi** — le tableau des règles est en §9. |
 | 13/09/2026 | **Audit des API, et le brouillard réparé sous Sodium.** L'audit (`AUDIT-API.md`, 42 jars de l'instance et le jar 26.2 passés à `javap`) a surtout servi à **défaire une affirmation de cette spec**. §5 disait que Sodium n'injectait pas au même endroit que nous, preuve à l'appui : « son rappel renvoie un `Vector4f` ». Faux — c'était le **générique de son `CallbackInfoReturnable`**, reste d'une signature plus ancienne, effacé à l'exécution ; le champ `method` de son annotation dit `setupFog` et son `@At` dit `RETURN`. **Un générique ne prouve pas la méthode visée**, et cette erreur de lecture avait fait classer la fonctionnalité comme irréparable, en écartant nommément la seule piste qui marchait. Le correctif est **un attribut** : `priority = 500`. Une priorité **basse** est appliquée en premier donc **s'exécute** en premier (`MixinInfo.compareTo` trie croissant, `applyMixins()` parcourt le `SortedSet` dans cet ordre, un `@Inject` à `RETURN` insère avant le `areturn`) — monter la priorité aurait aggravé le défaut, ce qui explique probablement l'échec de la tentative d'alors. **Vérifié sur le bytecode fusionné, avec témoin** : Sodium 0.9.1 et Iris 1.11.2 déposés dans `run/mods` (possible sans remapping, il n'y a plus d'`intermediary` depuis 26.1), `-Dmixin.debug.export=true`, et les deux exports lus à `javap`. Sans priorité : `iris$render`, `sodium$storeFogParameters`, **puis** `mastersword$thickenNearShrine` — Sodium photographiait le brouillard avant qu'on y touche. Avec : `mastersword$thickenNearShrine` **en tête**, Sodium en dernier. Pas de sous-agent de relecture : l'unique risque du changement était le **sens** du tri, et le témoin le tranche mieux qu'une lecture. **Essai en jeu le 13/09** — Sodium et Iris installés, shaders coupés, le brouillard est là. ⚠️ Mais **cet essai ne valide pas le correctif** : la même configuration n'avait jamais été testée *avant*, le premier constat s'étant fait shaders chargés. Seul le témoin sur le bytecode établit que Sodium photographiait avant nous, et il tournait avec 3 mods là où l'instance en a 42 — l'ordre à priorité égale dépendant du chargement des mods, il a pu tomber autrement chez Jérôme. Ce qui reste acquis sans réserve : l'ordre n'est plus laissé au hasard. **Toujours absent sous shaderpack**, et le relevé de son pack a clos la question : `Complementary Reimagined r5.8.1` ne contient **aucune occurrence** de `fogEnd`, `fogStart`, `fogDensity`, `fogMode` ni `fogShape` — son brouillard de surface est entièrement le sien, et les deux seuls états du jeu qu'il lit à l'air libre (`blindness`, `darknessFactor`) assombrissent au lieu de brumer. Aucune valeur à bouger, donc aucune API n'y aurait changé quoi que ce soit. Jérôme tranche : **on en reste là** ; les deux suites possibles étaient un brouillard dessiné en géométrie propre ou un effet Cécité, écartées pour leur coût et pour le gameplay. Leçon transposable, versée au mémo : **un shaderpack est du GLSL en clair — `grep -rn fogEnd .` avant de promettre quoi que ce soit de « compatible shaders »**. Trois autres résultats de l'audit, non faits : aucun mod de structures de l'instance n'utilise de bibliothèque de placement ni de `StructurePlacement` custom (l'option B de §4.1 n'est faite **par personne**) ; **l'option B ne corrigerait pas les bordures de biome**, car `Structure.isValidBiome` ne teste **qu'un point**, au coin nord-ouest du chunk — mesuré sur le seul sanctuaire généré de nos mondes, à 8 blocs d'une rivière ; et le vrai manque de notre approche est le processor `minecraft:rule`, dont le `random_block_match` tire sur la **position absolue** (`Mth.getSeed(pos)`) alors que le tirage de `builder.js` est figé dans le `.nbt` — tous nos sanctuaires sont identiques au bloc près. |
 | 13/09/2026 | **La Cascade secrète est abandonnée ; le mod ne garde que la clairière.** Quatre versions essayées en jeu, aucune convaincante — le détail est en §4.2. Deux leçons valent plus que la variante. **Un terrain ne se transplante pas** : la capture du build de Jérôme était aux trois quarts du sol naturel, et posée sur un autre monde, aplani par `beard_thin`, elle est ressortie en pierre suspendue en l'air. Et **l'eau obéit à une règle simple que je n'avais pas su lire** : le niveau d'un écoulement est sa distance à la source, un par bloc, et une case n'est `falling` que si elle est alimentée par le dessus. Les deux ont été trouvées en **lisant le monde sauvegardé**, pas la documentation : `tools/structure/anvil.js` (lecteur de région Anvil) et `capture.js` sont nés de là et restent, non plus pour produire une variante mais pour savoir ce qu'une génération a vraiment produit. Le `template_pool` ne contient plus qu'un `element`. |
 | 13/09/2026 | **Étape 13 : la contrainte des arbres est levée, et les deux variantes sont refaites.** L'essai en jeu de l'étape 12 était sans appel — « trop carré », la cascade « pas jolie », un « mur de 4 blocs » au nord — et les trois défauts avaient la même cause : le sol ne pouvait être que minéral, et le `.nbt` remplissait sa boîte d'air et de pierre. **Trois leviers, tous vérifiés avant d'écrire.** (1) Un **verrou Java** (§4.4) remplace la palette : trois mixins annulent tout arbre, champignon géant ou tronc couché dont l'origine tombe dans un disque autour du socle. (2) La **liste de blocs d'un `.nbt` peut être creuse** — `placeInWorld` itère la liste et n'exige aucune couverture, vanilla le fait lui-même (`taiga_decoration_1` ne liste que 22 de ses 36 cases) — donc l'emprise a enfin une silhouette. `structure_void` aurait été **posé tel quel** : le jigsaw n'ajoute que `BlockIgnoreProcessor.STRUCTURE_BLOCK`. (3) Deux blocs couleur terre non enracinables trouvés en chemin, `dirt_path` et `packed_mud`. **L'erreur de fond, trouvée par la relecture Opus : `y=0` est le bloc de surface, pas l'air au-dessus** — `JigsawPlacement` ancre sur `box.minY() + getGroundLevelDelta()` avec un delta de **1**. Toute la prairie que je posais en `y=0` *remplaçait* la motte : l'essai en jeu montrait des cuvettes d'un bloc semées autour de la terrasse. Décor remonté en `y=1`, remplissage d'air démarré à `y=1`. **Second chiffre corrigé : le `random_selector` tire un arbre à 92 %, pas 2/3** — `birch_leaf_litter`, `fancy_oak_leaf_litter` et le défaut `oak_leaf_litter` sont aussi des features `minecraft:tree` — soit **5,8 %** de risque par case de terre à découvert et non 4 %. **Trois réglages demandés par Jérôme en jeu** : le disque du verrou resserré deux fois, jusqu'à un **rayon constant de 5** (le dimensionner sur l'emprise laissait un anneau d'herbe nue entre le sanctuaire et la forêt) ; **cinq chênes noirs plantés par la clairière elle-même**, pour remettre de la canopée ; et la cascade refaite en **deux étages** d'après une référence, parce qu'une colonne d'eau isolée « ne fait pas très naturel ». Le deux-étages tient sans un seul état d'écoulement intermédiaire parce que **chaque étage a sa source murée**, la vasque intermédiaire servant de quatrième mur à la seconde. **Relecture Opus, deux passes.** La première a bloqué le commit sur trois points, tous corrigés : le `y=0`, les champignons géants et troncs couchés que `TreeFeature` ne voyait pas, et `clearSkyOverBuiltColumns` qui écrivait en `y=0`. La seconde a validé l'eau à deux étages cellule par cellule, et corrigé deux affirmations : « une source s'étale toujours latéralement » est **incomplet** (`spread` sort tôt si elle peut couler vers le bas, sauf à partir de trois sources voisines — notre contrôle est donc plus strict que le jeu, volontairement), et le commentaire qui prétendait que le rayon du script « reflète exactement » celui du Java, alors qu'il est recopié à la main. Clairière validée par Jérôme le 13/09. |
