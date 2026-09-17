@@ -1702,7 +1702,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | # | Question | Impact |
 | --- | --- | --- |
 | 1 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
-| 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
+| 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? **GitHub : oui**, public depuis le 17/09/2026 (https://github.com/Jacob-Ps231/the-master-sword, branche `main`, ex-`master`), choix de Jérôme. **Modrinth : pas encore tranché.** Restent à faire : README, bloc `contact` de `fabric.mod.json`, icône du mod | README, bloc `contact` de `fabric.mod.json`, icône du mod |
 | 3 | ~~Le sanctuaire tombe trop souvent en bordure de biome~~ — **fermée le 14/09/2026.** Mesuré à 38 % sur 487 sanctuaires, corrigé en exigeant l'emprise entière (§4.1), re-mesuré à 17 %. | §4.1 |
 | 4 | ~~Une carte menant au sanctuaire, vendue par le cartographe~~ — **fermée le 17/09/2026.** Faite à l'étape 17, en données plus un type de décoration ; icône propre ajoutée à l'étape 18. Distance typique d'environ 5 000 blocs (2 000 relevés sur un monde favorable), sans gel perceptible. | §4.5 |
 
