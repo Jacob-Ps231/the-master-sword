@@ -1581,7 +1581,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | Point | Décision |
 | --- | --- |
 | Niveau | **3** (apprenti), et l'échange doit être **proposé à coup sûr**. D'abord demandé au niveau 4, déplacé au niveau 3 le même jour pour s'en tenir aux données, sans Java |
-| Nombre d'offres au niveau 3 | 🔷 **à confirmer : `amount` 4**, c'est-à-dire les quatre échanges du niveau (boussole, carte des océans, carte des chambres des épreuves, notre carte). Avec 3 tirages, notre carte ne sortirait que 3 fois sur 4 |
+| Nombre d'offres au niveau 3 | **`amount` 4**, confirmé par Jérôme le 17/09/2026 :  les quatre échanges du niveau (boussole, carte des océans, carte des chambres des épreuves, notre carte). Avec 3 tirages, notre carte ne sortirait que 3 fois sur 4 |
 | Prix | **celui du manoir** : 14 émeraudes + 1 boussole contre une carte vierge, 12 utilisations, 30 XP, `reputation_discount` 0,2 (même mécanique de réduction) |
 | Icône | **une icône à nous**, fournie par Jérôme (générée à part) : 8 × 8 px RGBA, comme `textures/map/decorations/woodland_mansion.png` |
 | Après le retrait de l'épée | **comportement vanilla**, rien à coder : une carte achetée pointe toujours au même endroit, les suivantes vont plus loin |
