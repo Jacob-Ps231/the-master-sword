@@ -1599,7 +1599,10 @@ brancher après coup obligerait à repasser sur chaque fichier.
 - **Le manoir est « systématique » par hasard** : le tag du niveau 5 ne contient
   que deux échanges, tirés deux à deux. Le tag du niveau 4 en contient **16**
   (cadre + 15 bannières). Ajouter notre carte au tag ne la rendrait présente
-  qu'environ **une fois sur neuf** (2 tirages sur 17).
+  qu'environ **une fois sur neuf** (2 tirages sur 17). Au niveau 3, les cartes
+  océan et chambres des épreuves ne sont **pas** garanties non plus : 2 tirages
+  sur 3 échanges (avec la boussole), chacune sort 2 fois sur 3, et au moins une
+  des deux sort toujours.
 - `TradeSet(HolderSet<VillagerTrade>, NumberProvider amount, boolean allowDuplicates, Optional<Identifier> randomSequence)` :
   aucun champ « échange garanti ».
 - `ExplorationMapFunction` : `destination` est un `TagKey<Structure>`,
