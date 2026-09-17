@@ -1572,6 +1572,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | 1 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
 | 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
 | 3 | ~~Le sanctuaire tombe trop souvent en bordure de biome~~ — **fermée le 14/09/2026.** Mesuré à 38 % sur 487 sanctuaires, corrigé en exigeant l'emprise entière (§4.1), re-mesuré à 17 %. | §4.1 |
+| 4 | **Une carte menant au sanctuaire, vendue par le villageois cartographe.** Demandée par Jérôme le 17/09/2026. **Prochaine étape du projet.** Rien n'est encore vérifié en 26.2 : ni la façon dont vanilla fabrique ses cartes au trésor, ni celle d'ajouter un échange à un métier. À instruire au `javap` avant toute ligne de code. À trancher avec Jérôme : niveau du cartographe, prix, icône sur la carte, et ce que la carte fait une fois l'épée retirée. ⚠️ Le sanctuaire est plus rare d'un quart depuis l'étape 16 : la recherche de la carte ira donc plus loin, à mesurer. | nouvelle section, et du code |
 
 ### Question 3 — la cause, corrigée le 14/09/2026
 
