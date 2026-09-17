@@ -12,6 +12,7 @@ import re.jerome.mastersword.registry.ModComponents;
 import re.jerome.mastersword.registry.ModCriteria;
 import re.jerome.mastersword.registry.ModEntityTypes;
 import re.jerome.mastersword.registry.ModItems;
+import re.jerome.mastersword.registry.ModMapDecorations;
 import re.jerome.mastersword.worldgen.ShrineScan;
 
 public class MasterSwordMod implements ModInitializer {
@@ -39,6 +40,8 @@ public class MasterSwordMod implements ModInitializer {
 		// Before any datapack is read, so the advancement that names this trigger
 		// finds it in the registry.
 		ModCriteria.register();
+		// Same constraint: the cartographer trade names this decoration type.
+		ModMapDecorations.register();
 		MasterSwordCommand.register();
 		// Development only, and only when MASTERSWORD_SCAN is set: the shrine
 		// placement measurement of SPEC question 3, which cannot go through a

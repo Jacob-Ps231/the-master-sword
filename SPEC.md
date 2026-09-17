@@ -1049,6 +1049,104 @@ la prairie autour pousse sur le sol de la forêt, où un arbre est le bienvenu. 
 ne valait **pas** pour la cascade, dont la butte était en herbe par conception —
 la relecture du 13/09 l'avait relevé, et la variante a été abandonnée depuis.
 
+---
+
+### 4.5 La carte du cartographe ✅ — **faite (étape 17)**
+
+#### Décisions de Jérôme (17/09/2026) ✅
+
+| Point | Décision |
+| --- | --- |
+| Niveau | **3** (apprenti), et l'échange doit être **proposé à coup sûr**. D'abord demandé au niveau 4, déplacé au niveau 3 le même jour pour s'en tenir aux données, sans Java |
+| Nombre d'offres au niveau 3 | **`amount` 4**, confirmé par Jérôme le 17/09/2026 :  les quatre échanges du niveau (boussole, carte des océans, carte des chambres des épreuves, notre carte). Avec 3 tirages, notre carte ne sortirait que 3 fois sur 4 |
+| Prix | **celui du manoir** : 14 émeraudes + 1 boussole contre une carte vierge, 12 utilisations, 30 XP, `reputation_discount` 0,2 (même mécanique de réduction) |
+| Icône | **une icône à nous**, fournie par Jérôme (générée à part) : 8 × 8 px RGBA, comme `textures/map/decorations/woodland_mansion.png`. **Reportée** le 17/09/2026 (Jérôme) : la carte sort d'abord avec la croix rouge vanilla, voir plus bas |
+| Teinte de la carte | **celle du manoir** (5393476), choisie par Jérôme le 17/09/2026 |
+| Après le retrait de l'épée | **comportement vanilla**, rien à coder : une carte achetée pointe toujours au même endroit, les suivantes vont plus loin |
+
+#### Ce que vanilla fait en 26.2 (lu le 17/09/2026)
+
+- Les échanges sont **des données** : `data/minecraft/villager_trade/cartographer/<niveau>/<nom>.json`.
+  La carte du manoir (`5/emerald_and_compass_woodland_mansion_map.json`) :
+  `wants` 14 émeraudes, `additional_wants` boussole, `gives` `minecraft:map`,
+  puis `given_item_modifiers` = `exploration_map` (`destination` tag de
+  structures, `decoration`, `search_radius` 100) → `set_name` → `filtered` qui
+  jette l'échange si la carte n'a pas de `map_id` (rien trouvé).
+- Chaque niveau = **un seul** `trade_set` (`VillagerProfession.tradeSetsByLevel`,
+  `Int2ObjectMap<ResourceKey<TradeSet>>`). `data/minecraft/trade_set/cartographer/level_N.json`
+  tire `amount: 2` échanges dans le tag `#minecraft:cartographer/level_N`.
+- **Le tirage** (`AbstractVillager.addOffersFromItemListingsWithoutDuplicates`,
+  lu dans les sources) : on copie la liste du tag, puis tant qu'il manque des
+  offres, on **retire** un échange au hasard ; s'il donne `null` (carte sans
+  structure trouvée), il est perdu et on en tire un autre. `allow_duplicates`
+  vaut `false` par défaut. `amount` est un `NumberProvider` lu tel quel.
+- **Le manoir est « systématique » par construction** : le tag du niveau 5 ne
+  contient que deux échanges, tirés deux à deux. Le niveau 4 en contient **16**
+  (cadre + 15 bannières). Au niveau 3, les cartes océan et chambres des épreuves
+  ne sont **pas** garanties : 2 tirages sur 3 échanges (avec la boussole),
+  chacune sort 2 fois sur 3, et au moins une des deux sort toujours.
+- **Garantir notre carte au niveau 3, en données seulement** : ajouter l'échange
+  au tag `cartographer/level_3` (`"replace": false`, additif) **et** remplacer
+  `data/minecraft/trade_set/cartographer/level_3.json` avec `amount` 4.
+  Ce remplacement d'un fichier vanilla est le seul point fragile : un autre mod
+  ou datapack qui le remplace aussi l'emporte ou perd selon l'ordre de chargement.
+  Le datapack expérimental `trade_rebalance` ne touche pas au cartographe.
+- `ExplorationMapFunction` : `destination` est un `TagKey<Structure>`,
+  `decoration` un `Holder<MapDecorationType>` (défaut : le manoir). La recherche
+  (`ChunkGenerator.findNearestMapStructure`) compte `search_radius` en
+  **cellules** de placement — 100 cellules × 72 chunks chez nous — et passe par
+  la vraie génération des *starts* : **le mixin de bordure de biome (§4.1)
+  s'applique**, la carte ne vise jamais un sanctuaire refusé.
+- `MapDecorationType(assetId, showOnItemFrame, mapColor, explorationMapElement,
+  trackCount)` est un record public, dans `BuiltInRegistries.MAP_DECORATION_TYPE`.
+  La **teinte** de la carte vient de `mapColor` — `red_x` n'en a pas.
+- Côté client, **rien à écrire** : `MapRenderer` prend le sprite `assetId` dans
+  l'atlas `map_decorations`, dont la source `directory` `map/decorations` n'a
+  pas de filtre de namespace.
+- Les commandes (`/data modify entity … Offers`) ne modifient qu'**un**
+  villageois déjà présent : utiles pour tester, pas pour le mod.
+
+#### Ce qui est fait (étape 17)
+
+| Fichier | Rôle |
+| --- | --- |
+| `registry/ModMapDecorations.java` | type `mastersword:shrine` : sprite vanilla `minecraft:red_x`, teinte du manoir, mêmes drapeaux que le manoir. Enregistré dans `onInitialize` avant les datapacks |
+| `villager_trade/cartographer/3/emerald_and_compass_shrine_map.json` | l'échange, calqué sur celui du manoir |
+| `tags/worldgen/structure/on_shrine_maps.json` | la destination : `mastersword:master_sword` |
+| `minecraft/tags/villager_trade/cartographer/level_3.json` | ajout additif au niveau 3 |
+| `minecraft/trade_set/cartographer/level_3.json` | **remplace** vanilla, `amount` 4 |
+| `lang/*.json` | `filled_map.mastersword.shrine` : « Carte du bosquet sacré » / « Sacred Grove Map » |
+
+Un type de décoration à nous **dès maintenant**, alors que le sprite est
+vanilla : c'est lui qui porte la teinte. Le jour où l'icône arrive, il suffit
+de déposer `assets/mastersword/textures/map/decorations/shrine.png` et de
+remplacer `Identifier.withDefaultNamespace("red_x")` par `MasterSwordMod.id("shrine")`.
+
+**Limites relevées par la relecture Opus (17/09/2026), acceptées**
+
+- **Une carte qui ne trouve rien fait perdre une offre.** Le tirage en retire un
+  autre s'il en reste (`offersFound` n'avance pas, lu l. 281-287) — mais à 4
+  tirages pour 4 échanges, il n'en reste aucun : ce cartographe garde **3 offres**
+  au niveau 3, pour toujours. Vaut aussi si la carte des océans ou des chambres
+  échoue.
+- **La garantie tombe sans bruit** si un autre mod ou datapack ajoute un échange
+  au tag du niveau 3 (5 échanges pour 4 tirages), ou remplace lui aussi le
+  `trade_set`.
+- **Les cartographes déjà au niveau 3** d'un monde existant ne changent pas.
+- **Une carte par sanctuaire** : `StructureStart.getMaxReferences()` vaut 1, et
+  `skip_existing_chunks` est vrai — chaque carte vendue « consomme » le sien, la
+  suivante vise le plus proche encore libre. C'est le comportement vanilla voulu.
+- **Retirer le mod d'un monde** laisse dans les cartes vendues un identifiant de
+  décoration inconnu (le composant l'enregistre par nom).
+- **Coût** : le cache `StructureCheck` croit valide un sanctuaire que notre
+  mixin refuse ; chaque recherche recharge ces chunks jusqu'à
+  `STRUCTURE_STARTS`. Pire cas théorique : 40 401 cellules sur le thread
+  serveur, comme la carte du manoir. En pratique la recherche s'arrête au premier
+  anneau qui contient un sanctuaire.
+
+**Testé en jeu par Jérôme le 17/09/2026** : 4 offres à chaque cartographe, la carte mène au sanctuaire. **Non mesurés** : la distance de la carte et le temps de gel quand le
+cartographe passe au niveau 3.
+
 ## 5. Le brouillard ✅
 
 ✅ **L'ordre d'injection est fixé depuis le 13/09/2026**, et avec Sodium et Iris
@@ -1556,6 +1654,7 @@ jeu. Sous-agent de vérification avant chaque commit.
 | 14 | Cascade abandonnée | quatre essais, aucun convaincant ; le mod ne garde qu'une variante | **fait** 13/09/2026 |
 | 15 | Bordure de biome, mesure | instrument `/mastersword scan`, taux établi sur 487 sanctuaires (§9) | **fait** 14/09/2026 |
 | 16 | Bordure de biome, correctif | mixin sur `Structure.generate` : toute l'emprise en Dark Forest (§4.1) | **fait** 14/09/2026 |
+| 17 | Carte du cartographe | échange garanti au niveau 3, type de décoration à nous sur le sprite vanilla `red_x` (§4.5) | **fait** 17/09/2026 |
 
 Les étapes 11 et 12 sont venues **après** la fin du plan initial : le mod était
 complet à l'étape 10, elles ne touchent que l'apparence de la structure.
@@ -1572,61 +1671,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | 1 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
 | 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
 | 3 | ~~Le sanctuaire tombe trop souvent en bordure de biome~~ — **fermée le 14/09/2026.** Mesuré à 38 % sur 487 sanctuaires, corrigé en exigeant l'emprise entière (§4.1), re-mesuré à 17 %. | §4.1 |
-| 4 | **Une carte menant au sanctuaire, vendue par le villageois cartographe.** Demandée par Jérôme le 17/09/2026. **Prochaine étape du projet.** ⚠️ Le sanctuaire est plus rare d'un quart depuis l'étape 16 : la recherche de la carte ira donc plus loin, à mesurer. Détail ci-dessous. | nouvelle section, et du code |
-
-### Question 4 — la carte du cartographe
-
-**Décisions de Jérôme (17/09/2026)**
-
-| Point | Décision |
-| --- | --- |
-| Niveau | **3** (apprenti), et l'échange doit être **proposé à coup sûr**. D'abord demandé au niveau 4, déplacé au niveau 3 le même jour pour s'en tenir aux données, sans Java |
-| Nombre d'offres au niveau 3 | **`amount` 4**, confirmé par Jérôme le 17/09/2026 :  les quatre échanges du niveau (boussole, carte des océans, carte des chambres des épreuves, notre carte). Avec 3 tirages, notre carte ne sortirait que 3 fois sur 4 |
-| Prix | **celui du manoir** : 14 émeraudes + 1 boussole contre une carte vierge, 12 utilisations, 30 XP, `reputation_discount` 0,2 (même mécanique de réduction) |
-| Icône | **une icône à nous**, fournie par Jérôme (générée à part) : 8 × 8 px RGBA, comme `textures/map/decorations/woodland_mansion.png` |
-| Après le retrait de l'épée | **comportement vanilla**, rien à coder : une carte achetée pointe toujours au même endroit, les suivantes vont plus loin |
-
-**Ce que vanilla fait en 26.2 (lu dans `minecraft-merged.jar` et dans les sources décompilées le 17/09/2026)**
-
-- Les échanges sont **des données** : `data/minecraft/villager_trade/cartographer/<niveau>/<nom>.json`.
-  La carte du manoir (`5/emerald_and_compass_woodland_mansion_map.json`) :
-  `wants` 14 émeraudes, `additional_wants` boussole, `gives` `minecraft:map`,
-  puis `given_item_modifiers` = `exploration_map` (`destination` tag de
-  structures, `decoration`, `search_radius` 100) → `set_name` → `filtered` qui
-  jette l'échange si la carte n'a pas de `map_id` (rien trouvé).
-- Chaque niveau = **un seul** `trade_set` (`VillagerProfession.tradeSetsByLevel`,
-  `Int2ObjectMap<ResourceKey<TradeSet>>`). `data/minecraft/trade_set/cartographer/level_N.json`
-  tire `amount: 2` échanges dans le tag `#minecraft:cartographer/level_N`.
-- **Le tirage** (`AbstractVillager.addOffersFromItemListingsWithoutDuplicates`,
-  lu dans les sources) : on copie la liste du tag, puis tant qu'il manque des
-  offres, on **retire** un échange au hasard ; s'il donne `null` (carte sans
-  structure trouvée), il est perdu et on en tire un autre. `allow_duplicates`
-  vaut `false` par défaut. `amount` est un `NumberProvider` lu tel quel.
-- **Le manoir est « systématique » par construction** : le tag du niveau 5 ne
-  contient que deux échanges, tirés deux à deux. Le niveau 4 en contient **16**
-  (cadre + 15 bannières). Au niveau 3, les cartes océan et chambres des épreuves
-  ne sont **pas** garanties : 2 tirages sur 3 échanges (avec la boussole),
-  chacune sort 2 fois sur 3, et au moins une des deux sort toujours.
-- **Garantir notre carte au niveau 3, en données seulement** : ajouter l'échange
-  au tag `cartographer/level_3` (`"replace": false`, additif) **et** remplacer
-  `data/minecraft/trade_set/cartographer/level_3.json` avec `amount` 4.
-  Ce remplacement d'un fichier vanilla est le seul point fragile : un autre mod
-  ou datapack qui le remplace aussi l'emporte ou perd selon l'ordre de chargement.
-  Le datapack expérimental `trade_rebalance` ne touche pas au cartographe.
-- `ExplorationMapFunction` : `destination` est un `TagKey<Structure>`,
-  `decoration` un `Holder<MapDecorationType>`. Une icône propre exige
-  d'enregistrer un `MapDecorationType` en Java — registre et atlas client à
-  vérifier.
-- Les commandes (`/data modify entity … Offers`) ne modifient qu'**un**
-  villageois déjà présent : utiles pour tester, pas pour le mod.
-
-**À instruire en mode plan**
-
-1. Les fichiers de données : échange, tag de structures, ajout au tag de niveau,
-   `trade_set` du niveau 3, traduction du nom de la carte.
-2. Vérifier que `exploration_map` trouve bien notre structure (placement propre,
-   §4.1) et mesurer la distance avec `/mastersword scan`.
-3. Enregistrer le `MapDecorationType` et brancher la texture.
+| 4 | ~~Une carte menant au sanctuaire, vendue par le cartographe~~ — **fermée le 17/09/2026.** Faite à l'étape 17, en données plus un type de décoration ; l'icône propre est reportée. ⚠️ Reste à mesurer en jeu la distance (le sanctuaire est plus rare d'un quart depuis l'étape 16) et le temps de gel à la montée de niveau. | §4.5 |
 
 ### Question 3 — la cause, corrigée le 14/09/2026
 
@@ -1742,6 +1787,7 @@ ou à l'ouest.
 
 | Date | Décision |
 | --- | --- |
+| 17/09/2026 | **Étape 17 : le cartographe niveau 3 vend à coup sûr la carte du sanctuaire.** Quatre fichiers de données et **une** classe Java. Les données suivent exactement ce que la question 4 avait instruit : échange calqué sur le manoir, ajout additif au tag du niveau 3, `trade_set` du niveau 3 remplacé avec `amount` 4. La classe est venue d'un choix de Jérôme en cours de route : **l'icône maison est reportée**, la carte sort avec la croix rouge vanilla **mais avec la teinte du manoir** — or la teinte est portée par le `MapDecorationType`, et celui de `red_x` n'en a pas. D'où un type `mastersword:shrine` qui pointe sur le sprite vanilla ; le jour de l'icône, ce sera un PNG et un identifiant, **sans code client** (l'atlas `map_decorations` ramasse tous les namespaces, lu dans les sources). ⚠️ Ma question à Jérôme parlait de « la croix rouge du manoir » : faux, l'icône du manoir est un pictogramme de manoir ; les deux réponses (croix rouge, teinte du manoir) ne se conciliaient qu'avec ce type à nous. Vérifié aussi, et reporté en §4.5 : la recherche de la carte passe par la vraie génération des *starts*, donc **notre mixin de bordure s'applique** et la carte ne peut pas viser un sanctuaire refusé. Contrôles : build vert, serveur de dev démarré sans erreur de chargement des registres (un échange invalide y aurait fait échouer le démarrage). **Dégât collatéral** : ce démarrage passait par le lanceur headless du scan, qui nomme son rapport d'après la graine — le rapport brut du 14/09 (`run/mastersword-scan-20260914.txt`, hors git) a été écrasé ; ses chiffres restent dans §9. **Testé en jeu par Jérôme** : 4 offres à chaque cartographe, la carte fonctionne ; distance et temps de gel non mesurés. |
 | 14/09/2026 | **Étape 16 : le sanctuaire exige désormais que toute son emprise soit en Dark Forest.** Jérôme a choisi cette ligne du tableau mesuré le matin même : bordures ramenées de 38 % à 17 %, au prix d'un quart des sanctuaires. Deux portes se sont fermées d'elles-mêmes avant d'écrire : **`JigsawStructure` est `final`** (pas de `StructureType` maison qui en hériterait) et **`Structure.isValidBiome` est `private static` sans référence vers la structure** (impossible d'y limiter l'effet au nôtre). Reste `Structure.generate`, dont la signature porte déjà le `Holder<Structure>`, le `BiomeSource`, le `RandomState` et le prédicat de biomes valides : un `@Inject` à `RETURN` qui renvoie `INVALID_START`, c'est-à-dire exactement le chemin d'échec que vanilla emprunte quand son propre test de biome échoue. La règle vit dans `ShrineStructure` et **le scan l'appelle littéralement** : mesure et mise en œuvre ne peuvent pas diverger. **Le contrôle du scan a attrapé la première version.** Elle testait `StructureStart.getBoundingBox()`, qui passe par `adjustBoundingBox` et **gonfle l'emprise de 12 blocs** dans chaque direction dès que `terrain_adaptation` n'est pas `NONE` — la nôtre est `beard_thin`. Le mixin jugeait donc un carré de 41×41 au lieu de 17×17 et ne gardait que 82 sanctuaires sur 224 ; le rapport a annoncé 76 désaccords avec le jeu et s'est déclaré nul, ce qui est précisément ce pour quoi le contrôle avait été écrit une heure plus tôt. Corrigé en `start.getPieces()`. **Vérification de bout en bout** : le scan reproduit alors la prédiction au sanctuaire près — **158 gardés et 19,0 % en bordure** sur la seed de Jérôme là où la règle promettait 158 et 19,0 %, **203 et 14,8 %** sur la seconde — et le contrôle passe à zéro désaccord sur 27 951 candidats. L'export de bytecode prévu au plan n'a pas été fait : `mixins.json` étant en `required: true`, un injecteur qui ne trouve pas sa cible empêche le serveur de démarrer, et le contrôle prouve le comportement, pas seulement la présence. **Essai en jeu le 14/09** : Jérôme a visité **cinq ou six sanctuaires dans plusieurs mondes** et valide — « légèrement mieux, ça spawn un peu moins en bordure ». ⚠️ **Cet essai confirme le sens, pas l'ampleur** : à 5 ou 6 sanctuaires, la règle de 17 % en donne environ un en bordure et l'ancienne de 38 % environ deux — l'écart est trop petit pour se sentir, et « légèrement mieux » ne contredit donc pas la mesure. À retenir surtout : **un sanctuaire sur six reste au bord, c'est le résultat attendu et non un échec** ; en voir un ne rouvre rien. Ce qui n'a toujours pas été éprouvé, c'est la **raréfaction d'un quart**, qui ne se sent qu'en jouant longtemps — et c'est pour elle que la piste « déplacer le sanctuaire dans son chunk plutôt que d'y renoncer » (§9) reste ouverte. |
 | 14/09/2026 | **Le taux de sanctuaires en bordure est mesuré, et la pré-génération prévue pour y arriver est abandonnée.** SPEC prévoyait de pré-générer des chunks de Dark Forest et de relancer `biome_edge.js` dessus. C'était sans issue, pour une raison d'arithmétique : un candidat par cellule de 72×72 chunks, presque toujours hors Dark Forest, donc de l'ordre du **million de chunks** pour cent sanctuaires. Le placement se calcule **sans générer un seul chunk** — `getPotentialStructureChunk`, `isStructureChunk` et surtout `Structure.findValidGenerationPoint` sont publics, `GenerationContext` a un constructeur public, et `BiomeSource.getNoiseBiome` + `RandomState.sampler()` donnent les biomes. D'où `worldgen/ShrineScan.java` : 224 sanctuaires en 80 secondes là où la pré-génération aurait tourné des heures. **Rien de la décision vanilla n'y est réimplémenté** : le verdict vient de `findValidGenerationPoint` avec le vrai prédicat (`structure.biomes()::contains`, lu au bytecode de `ChunkGenerator`), et un second appel avec `b -> true` ne sert qu'à récupérer l'ancre et l'emprise des candidats refusés, pour noter les règles alternatives. **Recoupement obligatoire avant d'exploiter le moindre chiffre** : sur le monde de Jérôme, le scan retrouve le sanctuaire connu et annonce 4 blocs d'une rivière, ce que `biome_edge.js` lit dans les chunks sauvegardés par un chemin tout autre — au passage, **les « 8 blocs » notés ici le 13/09 étaient faux**. Résultat, sur deux seeds et 487 sanctuaires : **34 à 43 % à moins de 16 blocs d'un autre biome**, rivière dans 30 % des cas. Jérôme avait raison, et le chiffre est maintenant un chiffre. **Trois pièges payés comptant, tous versés au mémo machine.** (1) `getPotentialStructureChunk(seed, x, z)` prend des **coordonnées de chunk**, pas un index de cellule — elle fait le `floorDiv` par `spacing` elle-même ; lui passer l'index ne plante pas, ça replie les 441 cellules sur les quatre autour de l'origine, et le premier rapport annonçait alors **deux biomes pour le monde entier** et zéro sanctuaire. Ce sont ces deux biomes qui ont trahi le bug, pas une erreur. (2) **Sur le serveur dédié de dev, aucune commande console ne passe** — toutes échouent sans trace, `list` et `seed` vanilla compris, vérifié avec l'arbre de commandes du mod retiré du build ; d'où le déclenchement par `ServerLifecycleEvents.SERVER_STARTED` et `MASTERSWORD_SCAN`. (3) Le **watchdog tue le serveur à 60 s de tick** : un scan large doit partir sur un autre thread même quand personne ne joue. **Et la relecture Opus a défait une affirmation que cette spec donnait pour établie** : le point que `isValidBiome` teste n'est **pas** le coin nord-ouest du chunk. Ce coin n'est que l'argument passé à `JigsawPlacement.addPieces` ; le `GenerationStub` qui en revient est bâti sur `(maxX + minX) / 2` de l'emprise de la pièce de départ, soit le **centre du sanctuaire**. Confondre l'argument et le résultat rendait « recentrer l'ancre » crédible, alors qu'il n'y a rien à recentrer — et la mesure le confirmait déjà sans qu'on sache pourquoi, la règle « centre du chunk » ne changeant rien. Le scan porte désormais un **contrôle** : il recalcule le test de vanilla au point du stub et le compare au verdict du jeu sur chaque candidat — **zéro désaccord sur 27 951 candidats**, deux seeds. La même relecture a aussi montré que la règle « emprise entière » n'échantillonnait que 5 cellules sur 25 à 36 ; elle les parcourt toutes depuis. **Le correctif n'est pas choisi** — le tableau des règles est en §9. |
 | 13/09/2026 | **Audit des API, et le brouillard réparé sous Sodium.** L'audit (`AUDIT-API.md`, 42 jars de l'instance et le jar 26.2 passés à `javap`) a surtout servi à **défaire une affirmation de cette spec**. §5 disait que Sodium n'injectait pas au même endroit que nous, preuve à l'appui : « son rappel renvoie un `Vector4f` ». Faux — c'était le **générique de son `CallbackInfoReturnable`**, reste d'une signature plus ancienne, effacé à l'exécution ; le champ `method` de son annotation dit `setupFog` et son `@At` dit `RETURN`. **Un générique ne prouve pas la méthode visée**, et cette erreur de lecture avait fait classer la fonctionnalité comme irréparable, en écartant nommément la seule piste qui marchait. Le correctif est **un attribut** : `priority = 500`. Une priorité **basse** est appliquée en premier donc **s'exécute** en premier (`MixinInfo.compareTo` trie croissant, `applyMixins()` parcourt le `SortedSet` dans cet ordre, un `@Inject` à `RETURN` insère avant le `areturn`) — monter la priorité aurait aggravé le défaut, ce qui explique probablement l'échec de la tentative d'alors. **Vérifié sur le bytecode fusionné, avec témoin** : Sodium 0.9.1 et Iris 1.11.2 déposés dans `run/mods` (possible sans remapping, il n'y a plus d'`intermediary` depuis 26.1), `-Dmixin.debug.export=true`, et les deux exports lus à `javap`. Sans priorité : `iris$render`, `sodium$storeFogParameters`, **puis** `mastersword$thickenNearShrine` — Sodium photographiait le brouillard avant qu'on y touche. Avec : `mastersword$thickenNearShrine` **en tête**, Sodium en dernier. Pas de sous-agent de relecture : l'unique risque du changement était le **sens** du tri, et le témoin le tranche mieux qu'une lecture. **Essai en jeu le 13/09** — Sodium et Iris installés, shaders coupés, le brouillard est là. ⚠️ Mais **cet essai ne valide pas le correctif** : la même configuration n'avait jamais été testée *avant*, le premier constat s'étant fait shaders chargés. Seul le témoin sur le bytecode établit que Sodium photographiait avant nous, et il tournait avec 3 mods là où l'instance en a 42 — l'ordre à priorité égale dépendant du chargement des mods, il a pu tomber autrement chez Jérôme. Ce qui reste acquis sans réserve : l'ordre n'est plus laissé au hasard. **Toujours absent sous shaderpack**, et le relevé de son pack a clos la question : `Complementary Reimagined r5.8.1` ne contient **aucune occurrence** de `fogEnd`, `fogStart`, `fogDensity`, `fogMode` ni `fogShape` — son brouillard de surface est entièrement le sien, et les deux seuls états du jeu qu'il lit à l'air libre (`blindness`, `darknessFactor`) assombrissent au lieu de brumer. Aucune valeur à bouger, donc aucune API n'y aurait changé quoi que ce soit. Jérôme tranche : **on en reste là** ; les deux suites possibles étaient un brouillard dessiné en géométrie propre ou un effet Cécité, écartées pour leur coût et pour le gameplay. Leçon transposable, versée au mémo : **un shaderpack est du GLSL en clair — `grep -rn fogEnd .` avant de promettre quoi que ce soit de « compatible shaders »**. Trois autres résultats de l'audit, non faits : aucun mod de structures de l'instance n'utilise de bibliothèque de placement ni de `StructurePlacement` custom (l'option B de §4.1 n'est faite **par personne**) ; **l'option B ne corrigerait pas les bordures de biome**, car `Structure.isValidBiome` ne teste **qu'un point**, au coin nord-ouest du chunk — mesuré sur le seul sanctuaire généré de nos mondes, à 8 blocs d'une rivière ; et le vrai manque de notre approche est le processor `minecraft:rule`, dont le `random_block_match` tire sur la **position absolue** (`Mth.getSeed(pos)`) alors que le tirage de `builder.js` est figé dans le `.nbt` — tous nos sanctuaires sont identiques au bloc près. |
