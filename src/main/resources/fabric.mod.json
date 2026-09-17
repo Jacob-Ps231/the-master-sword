@@ -13,6 +13,7 @@
 		"issues": "https://github.com/Jacob-Ps231/the-master-sword/issues"
 	},
 	"license": "MIT",
+	"icon": "assets/mastersword/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
