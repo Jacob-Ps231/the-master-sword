@@ -1160,8 +1160,24 @@ réduisait à une ligne. Une texture non carrée serait étirée.
   serveur, comme la carte du manoir. En pratique la recherche s'arrête au premier
   anneau qui contient un sanctuaire.
 
-**Testé en jeu par Jérôme le 17/09/2026** : 4 offres à chaque cartographe, la carte mène au sanctuaire. **Non mesurés** : la distance de la carte et le temps de gel quand le
-cartographe passe au niveau 3.
+**Testé en jeu par Jérôme le 17/09/2026** : 4 offres à chaque cartographe, la carte mène au sanctuaire.
+
+**Distance et gel, relevés par Jérôme le 17/09/2026** : sur un monde, le
+sanctuaire visé est à **environ 2 000 blocs** (`/locate structure
+mastersword:master_sword` à côté du cartographe), et **aucun gel perceptible**
+quand ses offres se génèrent.
+
+⚠️ **Ces 2 000 blocs sont un tirage favorable, pas la norme.** Jérôme se
+souvient d'environ **5 000 blocs** lors des essais des étapes précédentes, et
+c'est ce que donne le scan (§9, question 3) : 224 et 263 sanctuaires sur
+121 × 121 cellules, soit ~1,7 % des cellules, ramené à ~1,2 % par la règle de
+l'étape 16. Une cellule fait 1 152 × 1 152 blocs. Si l'on suppose les
+sanctuaires répartis au hasard, la distance **médiane** au plus proche vaut
+~4 900 blocs, et moins d'un tirage sur dix tombe sous 2 000. Les forêts noires
+formant des massifs, ce n'est qu'un ordre de grandeur. **Une carte mène
+donc typiquement à environ 5 000 blocs** ; pas de gel perceptible. Un second
+essai de Jérôme le même jour donne bien ~5 000 blocs. **Distance validée par
+Jérôme le 17/09/2026** : rien à changer au placement.
 
 ## 5. Le brouillard ✅
 
@@ -1688,7 +1704,7 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | 1 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
 | 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
 | 3 | ~~Le sanctuaire tombe trop souvent en bordure de biome~~ — **fermée le 14/09/2026.** Mesuré à 38 % sur 487 sanctuaires, corrigé en exigeant l'emprise entière (§4.1), re-mesuré à 17 %. | §4.1 |
-| 4 | ~~Une carte menant au sanctuaire, vendue par le cartographe~~ — **fermée le 17/09/2026.** Faite à l'étape 17, en données plus un type de décoration ; l'icône propre est reportée. ⚠️ Reste à mesurer en jeu la distance (le sanctuaire est plus rare d'un quart depuis l'étape 16) et le temps de gel à la montée de niveau. | §4.5 |
+| 4 | ~~Une carte menant au sanctuaire, vendue par le cartographe~~ — **fermée le 17/09/2026.** Faite à l'étape 17, en données plus un type de décoration ; icône propre ajoutée à l'étape 18. Distance typique d'environ 5 000 blocs (2 000 relevés sur un monde favorable), sans gel perceptible. | §4.5 |
 
 ### Question 3 — la cause, corrigée le 14/09/2026
 
