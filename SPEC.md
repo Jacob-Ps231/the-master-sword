@@ -1580,12 +1580,13 @@ brancher après coup obligerait à repasser sur chaque fichier.
 
 | Point | Décision |
 | --- | --- |
-| Niveau | **4** (compagnon), et l'échange doit être **proposé à coup sûr**, comme la carte du manoir au niveau 5 |
+| Niveau | **3** (apprenti), et l'échange doit être **proposé à coup sûr**. D'abord demandé au niveau 4, déplacé au niveau 3 le même jour pour s'en tenir aux données, sans Java |
+| Nombre d'offres au niveau 3 | 🔷 **à confirmer : `amount` 4**, c'est-à-dire les quatre échanges du niveau (boussole, carte des océans, carte des chambres des épreuves, notre carte). Avec 3 tirages, notre carte ne sortirait que 3 fois sur 4 |
 | Prix | **celui du manoir** : 14 émeraudes + 1 boussole contre une carte vierge, 12 utilisations, 30 XP, `reputation_discount` 0,2 (même mécanique de réduction) |
 | Icône | **une icône à nous**, fournie par Jérôme (générée à part) : 8 × 8 px RGBA, comme `textures/map/decorations/woodland_mansion.png` |
 | Après le retrait de l'épée | **comportement vanilla**, rien à coder : une carte achetée pointe toujours au même endroit, les suivantes vont plus loin |
 
-**Ce que vanilla fait en 26.2 (lu dans `minecraft-merged.jar` le 17/09/2026)**
+**Ce que vanilla fait en 26.2 (lu dans `minecraft-merged.jar` et dans les sources décompilées le 17/09/2026)**
 
 - Les échanges sont **des données** : `data/minecraft/villager_trade/cartographer/<niveau>/<nom>.json`.
   La carte du manoir (`5/emerald_and_compass_woodland_mansion_map.json`) :
@@ -1596,28 +1597,33 @@ brancher après coup obligerait à repasser sur chaque fichier.
 - Chaque niveau = **un seul** `trade_set` (`VillagerProfession.tradeSetsByLevel`,
   `Int2ObjectMap<ResourceKey<TradeSet>>`). `data/minecraft/trade_set/cartographer/level_N.json`
   tire `amount: 2` échanges dans le tag `#minecraft:cartographer/level_N`.
-- **Le manoir est « systématique » par hasard** : le tag du niveau 5 ne contient
-  que deux échanges, tirés deux à deux. Le tag du niveau 4 en contient **16**
-  (cadre + 15 bannières). Ajouter notre carte au tag ne la rendrait présente
-  qu'environ **une fois sur neuf** (2 tirages sur 17). Au niveau 3, les cartes
-  océan et chambres des épreuves ne sont **pas** garanties non plus : 2 tirages
-  sur 3 échanges (avec la boussole), chacune sort 2 fois sur 3, et au moins une
-  des deux sort toujours.
-- `TradeSet(HolderSet<VillagerTrade>, NumberProvider amount, boolean allowDuplicates, Optional<Identifier> randomSequence)` :
-  aucun champ « échange garanti ».
+- **Le tirage** (`AbstractVillager.addOffersFromItemListingsWithoutDuplicates`,
+  lu dans les sources) : on copie la liste du tag, puis tant qu'il manque des
+  offres, on **retire** un échange au hasard ; s'il donne `null` (carte sans
+  structure trouvée), il est perdu et on en tire un autre. `allow_duplicates`
+  vaut `false` par défaut. `amount` est un `NumberProvider` lu tel quel.
+- **Le manoir est « systématique » par construction** : le tag du niveau 5 ne
+  contient que deux échanges, tirés deux à deux. Le niveau 4 en contient **16**
+  (cadre + 15 bannières). Au niveau 3, les cartes océan et chambres des épreuves
+  ne sont **pas** garanties : 2 tirages sur 3 échanges (avec la boussole),
+  chacune sort 2 fois sur 3, et au moins une des deux sort toujours.
+- **Garantir notre carte au niveau 3, en données seulement** : ajouter l'échange
+  au tag `cartographer/level_3` (`"replace": false`, additif) **et** remplacer
+  `data/minecraft/trade_set/cartographer/level_3.json` avec `amount` 4.
+  Ce remplacement d'un fichier vanilla est le seul point fragile : un autre mod
+  ou datapack qui le remplace aussi l'emporte ou perd selon l'ordre de chargement.
+  Le datapack expérimental `trade_rebalance` ne touche pas au cartographe.
 - `ExplorationMapFunction` : `destination` est un `TagKey<Structure>`,
   `decoration` un `Holder<MapDecorationType>`. Une icône propre exige
   d'enregistrer un `MapDecorationType` en Java — registre et atlas client à
   vérifier.
-- Le jar `fabric-object-builder-api-v1` du cache ne contient plus de classe
-  `Trade*` : pas de `TradeOfferHelper` évident, **à confirmer sur la 0.159.0+26.2**.
+- Les commandes (`/data modify entity … Offers`) ne modifient qu'**un**
+  villageois déjà présent : utiles pour tester, pas pour le mod.
 
 **À instruire en mode plan**
 
-1. Garantir l'échange au niveau 4 sans écraser le `trade_set` vanilla (conflit
-   avec tout autre mod) : ajout en Java après le tirage du niveau 4 — le
-   compagnon aurait alors **3** offres. Point d'accroche à trouver (API Fabric,
-   sinon mixin → relecture Opus obligatoire).
+1. Les fichiers de données : échange, tag de structures, ajout au tag de niveau,
+   `trade_set` du niveau 3, traduction du nom de la carte.
 2. Vérifier que `exploration_map` trouve bien notre structure (placement propre,
    §4.1) et mesurer la distance avec `/mastersword scan`.
 3. Enregistrer le `MapDecorationType` et brancher la texture.
