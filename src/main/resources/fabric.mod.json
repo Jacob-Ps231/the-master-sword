@@ -2,11 +2,16 @@
 	"schemaVersion": 1,
 	"id": "mastersword",
 	"version": "${version}",
-	"name": "The Master Sword",
+	"name": "Zelda Master Sword",
 	"description": "A legendary sword waits in a pedestal deep in the dark forest, guarded by a fog that thickens as you approach. Pull it out and the fog is gone for good.",
 	"authors": [
 		"Jerome"
 	],
+	"contact": {
+		"homepage": "https://modrinth.com/mod/zelda-master-sword",
+		"sources": "https://github.com/Jacob-Ps231/the-master-sword",
+		"issues": "https://github.com/Jacob-Ps231/the-master-sword/issues"
+	},
 	"license": "MIT",
 	"environment": "*",
 	"entrypoints": {
