@@ -1708,6 +1708,52 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? **GitHub : oui**, public depuis le 17/09/2026 (https://github.com/Jacob-Ps231/the-master-sword, branche `main`, ex-`master`), choix de Jérôme. **Modrinth : oui**, sous le nom « Zelda Master Sword » (étape 19, §7.1). README et bloc `contact` faits ; **reste l'icône du mod** | README, `fabric.mod.json`, §7.1 |
 | 3 | ~~Le sanctuaire tombe trop souvent en bordure de biome~~ — **fermée le 14/09/2026.** Mesuré à 38 % sur 487 sanctuaires, corrigé en exigeant l'emprise entière (§4.1), re-mesuré à 17 %. | §4.1 |
 | 4 | ~~Une carte menant au sanctuaire, vendue par le cartographe~~ — **fermée le 17/09/2026.** Faite à l'étape 17, en données plus un type de décoration ; icône propre ajoutée à l'étape 18. Distance typique d'environ 5 000 blocs (2 000 relevés sur un monde favorable), sans gel perceptible. | §4.5 |
+| 5 | **Compatibilité Minecraft 26.3, en gardant 26.2.** Demandée par Jérôme le 17/09/2026. **Prochaine étape du projet**, à faire dans une session neuve, en mode plan. Un seul jar pour les deux versions, ou deux jars ? Dépend de ce que 26.3 a changé. Détail ci-dessous. | `gradle.properties`, `fabric.mod.json`, mixins, Modrinth |
+
+### Question 5 — Minecraft 26.3
+
+**Relevé le 17/09/2026** (meta.fabricmc.net, maven.fabricmc.net, API Modrinth) :
+
+| Élément | État pour 26.3 |
+| --- | --- |
+| Minecraft 26.3 | sorti en stable (après rc-1 à rc-3) |
+| Fabric Loader | **0.19.5** le prend en charge (déjà la nôtre) |
+| Fabric API | `0.160.7+26.3` (Maven et Modrinth) |
+| Loom | dernière publiée **1.18.2** ; nous sommes en 1.17.19. Le mod d'exemple officiel n'a **pas encore** de branche 26.3 (branche par défaut : 26.2, Loom `1.17-SNAPSHOT`). À vérifier en premier : Loom 1.17 sait-il charger 26.3 ? |
+| Gradle | 9.5.1 chez nous ; à recouper avec ce que demande Loom 1.18 |
+
+**Ce qui risque de casser**, par ordre de risque :
+
+1. Les **mixins**, qui visent des méthodes précises. Pour chacun, vérifier que la méthode visée existe toujours dans 26.3, avec la même signature et au même point d'injection :
+   - le brouillard (`FogRenderer.setupFog`, injection à `RETURN`, `priority = 500`) ;
+   - la règle de biome (`Structure.generate`) ;
+   - le verrou des arbres (`TreeFeatureMixin`, `FeaturePlacementMixins`) ;
+   - `StructureBiomeMarginMixin` ;
+   - `AnvilMenuMixin`, `EnchantmentHelperMixin`, `EnchantCommandMixin` ;
+   - `ItemStackMixin` (`getMaxDamage`, `isDamageableItem`) ;
+   - `PlayerAttackMixin`, `ServerPlayerMixin`.
+2. Le **rendu** client : `PedestalRenderer`, `LightWaveRenderer` et leurs `RenderState`. Les API de rendu ont bougé à chaque version de la série 26.
+3. Les **données** :
+   - format de `villager_trade` et de `trade_set` (système récent) ;
+   - le `trade_set` du niveau 3 que nous remplaçons : vérifier qu'il vaut toujours `amount 2` avec les mêmes trois échanges ;
+   - `exploration_map` ;
+   - le `template_pool` et la structure.
+4. La **structure `.nbt`** : la garder produite pour 26.2. Minecraft met à niveau un fichier plus ancien, jamais l'inverse.
+
+**Méthode prévue** :
+
+1. Faire le travail sur une branche de test.
+2. Passer `minecraft_version` à 26.3, avec la Fabric API correspondante (et Loom si nécessaire), puis `./gradlew build`.
+3. Passer **chaque** cible de mixin et chaque API vanilla utilisée à `javap`, sur les jars 26.2 et 26.3, et comparer.
+4. Relancer `genSources` si une méthode a changé de corps.
+5. Tester en jeu sur les deux versions : génération du sanctuaire, brouillard (avec Sodium), socle, vague de lumière, enchantements, enclume, carte du cartographe.
+
+**Les deux issues possibles** :
+
+- **Rien n'a changé** dans ce qu'on utilise : **un seul jar**. `fabric.mod.json` passe à `"minecraft": ">=26.2 <26.4"`, et une seule version Modrinth coche 26.2 et 26.3. Il faut quand même tester sur les deux, car un mixin peut compiler mais ne plus rien trouver à l'exécution.
+- **Quelque chose a changé** : **deux jars** depuis le même dépôt, une branche par version de Minecraft (par exemple `mc/26.2` et `mc/26.3`), et deux fichiers Modrinth numérotés `1.0.1+26.2` et `1.0.1+26.3`. Chaque correctif est alors à reporter sur les deux branches.
+
+**À publier en même temps** : la 1.0.1, déjà prête dans le dépôt (icône du mod dans le jar). Relecture par sous-agent **obligatoire** si des mixins sont modifiés.
 
 ### Question 3 — la cause, corrigée le 14/09/2026
 
