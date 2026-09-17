@@ -1572,7 +1572,52 @@ brancher après coup obligerait à repasser sur chaque fichier.
 | 1 | Perdre les enchantements à la meule / table de craft est-il acceptable ? 🔷 oui, c'est vanilla | §2.2 |
 | 2 | Le dépôt est-il destiné à être publié (GitHub, Modrinth) ? | README, bloc `contact` de `fabric.mod.json`, icône du mod |
 | 3 | ~~Le sanctuaire tombe trop souvent en bordure de biome~~ — **fermée le 14/09/2026.** Mesuré à 38 % sur 487 sanctuaires, corrigé en exigeant l'emprise entière (§4.1), re-mesuré à 17 %. | §4.1 |
-| 4 | **Une carte menant au sanctuaire, vendue par le villageois cartographe.** Demandée par Jérôme le 17/09/2026. **Prochaine étape du projet.** Rien n'est encore vérifié en 26.2 : ni la façon dont vanilla fabrique ses cartes au trésor, ni celle d'ajouter un échange à un métier. À instruire au `javap` avant toute ligne de code. À trancher avec Jérôme : niveau du cartographe, prix, icône sur la carte, et ce que la carte fait une fois l'épée retirée. ⚠️ Le sanctuaire est plus rare d'un quart depuis l'étape 16 : la recherche de la carte ira donc plus loin, à mesurer. | nouvelle section, et du code |
+| 4 | **Une carte menant au sanctuaire, vendue par le villageois cartographe.** Demandée par Jérôme le 17/09/2026. **Prochaine étape du projet.** ⚠️ Le sanctuaire est plus rare d'un quart depuis l'étape 16 : la recherche de la carte ira donc plus loin, à mesurer. Détail ci-dessous. | nouvelle section, et du code |
+
+### Question 4 — la carte du cartographe
+
+**Décisions de Jérôme (17/09/2026)**
+
+| Point | Décision |
+| --- | --- |
+| Niveau | **4** (compagnon), et l'échange doit être **proposé à coup sûr**, comme la carte du manoir au niveau 5 |
+| Prix | **celui du manoir** : 14 émeraudes + 1 boussole contre une carte vierge, 12 utilisations, 30 XP, `reputation_discount` 0,2 (même mécanique de réduction) |
+| Icône | **une icône à nous**, fournie par Jérôme (générée à part) : 8 × 8 px RGBA, comme `textures/map/decorations/woodland_mansion.png` |
+| Après le retrait de l'épée | **comportement vanilla**, rien à coder : une carte achetée pointe toujours au même endroit, les suivantes vont plus loin |
+
+**Ce que vanilla fait en 26.2 (lu dans `minecraft-merged.jar` le 17/09/2026)**
+
+- Les échanges sont **des données** : `data/minecraft/villager_trade/cartographer/<niveau>/<nom>.json`.
+  La carte du manoir (`5/emerald_and_compass_woodland_mansion_map.json`) :
+  `wants` 14 émeraudes, `additional_wants` boussole, `gives` `minecraft:map`,
+  puis `given_item_modifiers` = `exploration_map` (`destination` tag de
+  structures, `decoration`, `search_radius` 100) → `set_name` → `filtered` qui
+  jette l'échange si la carte n'a pas de `map_id` (rien trouvé).
+- Chaque niveau = **un seul** `trade_set` (`VillagerProfession.tradeSetsByLevel`,
+  `Int2ObjectMap<ResourceKey<TradeSet>>`). `data/minecraft/trade_set/cartographer/level_N.json`
+  tire `amount: 2` échanges dans le tag `#minecraft:cartographer/level_N`.
+- **Le manoir est « systématique » par hasard** : le tag du niveau 5 ne contient
+  que deux échanges, tirés deux à deux. Le tag du niveau 4 en contient **16**
+  (cadre + 15 bannières). Ajouter notre carte au tag ne la rendrait présente
+  qu'environ **une fois sur neuf** (2 tirages sur 17).
+- `TradeSet(HolderSet<VillagerTrade>, NumberProvider amount, boolean allowDuplicates, Optional<Identifier> randomSequence)` :
+  aucun champ « échange garanti ».
+- `ExplorationMapFunction` : `destination` est un `TagKey<Structure>`,
+  `decoration` un `Holder<MapDecorationType>`. Une icône propre exige
+  d'enregistrer un `MapDecorationType` en Java — registre et atlas client à
+  vérifier.
+- Le jar `fabric-object-builder-api-v1` du cache ne contient plus de classe
+  `Trade*` : pas de `TradeOfferHelper` évident, **à confirmer sur la 0.159.0+26.2**.
+
+**À instruire en mode plan**
+
+1. Garantir l'échange au niveau 4 sans écraser le `trade_set` vanilla (conflit
+   avec tout autre mod) : ajout en Java après le tirage du niveau 4 — le
+   compagnon aurait alors **3** offres. Point d'accroche à trouver (API Fabric,
+   sinon mixin → relecture Opus obligatoire).
+2. Vérifier que `exploration_map` trouve bien notre structure (placement propre,
+   §4.1) et mesurer la distance avec `/mastersword scan`.
+3. Enregistrer le `MapDecorationType` et brancher la texture.
 
 ### Question 3 — la cause, corrigée le 14/09/2026
 
