@@ -94,7 +94,9 @@ public final class ShrineGuard {
 		// hands it down as an argument our mixin never sees. The value is used
 		// for exactly one call and immediately narrowed back to the region.
 		StructureManager structures = region.getLevel().structureManager().forWorldGenRegion(region);
-		for (StructureStart start : structures.startsForStructure(SectionPos.of(pos), shrine)) {
+		// 26.3 takes the chunk coordinates instead of a SectionPos; same lookup,
+		// since the vertical section the old call carried was never read.
+		for (StructureStart start : structures.startsForStructure(chunkX, chunkZ, shrine)) {
 			if (start.isValid() && insideDisc(start.getBoundingBox(), pos)) {
 				return true;
 			}

@@ -7,7 +7,7 @@ générée en Dark Forest, gardée par un brouillard tant qu'elle n'est pas reti
 
 - **`SPEC.md`** — ce qu'on construit : specs confirmées, décisions techniques,
   plan d'implémentation, questions ouvertes. C'est la référence du projet.
-- **`../SETUP-MC-MODDING.md`** — les pièges de cette machine et de Minecraft
+- **`../SETUP-MC-MODDING-26.2.md`** — les pièges de cette machine et de Minecraft
   26.2 (versions Fabric vérifiées, erreurs de la doc officielle, méthode
   `javap`). À lire avant d'écrire du code Minecraft.
 
@@ -29,7 +29,7 @@ zéro, relance des dizaines de `javap` et regrepe les sources décompilées.
 D'où quatre règles.
 
 **Explorer soi-même par défaut.** Un sous-agent d'exploration seulement quand la
-question résiste à quelques `javap`, à `../SETUP-MC-MODDING.md` et aux sources
+question résiste à quelques `javap`, à `../SETUP-MC-MODDING-26.2.md` et aux sources
 décompilées. Une signature à confirmer, un nom de classe à retrouver : ça se fait
 directement.
 
@@ -70,4 +70,4 @@ est écrit précisément pour qu'une session neuve reprenne sans rien perdre.
 - `CLAUDE.md` (ce fichier) reste court : uniquement des instructions
   permanentes. Tout ce qui décrit le mod va dans `SPEC.md`.
 - Ce qu'on découvre sur Minecraft 26.2 ou sur la machine et qui vaudrait pour
-  **n'importe quel mod** va dans `../SETUP-MC-MODDING.md`, pas ici.
+  **n'importe quel mod** va dans `../SETUP-MC-MODDING-26.2.md`, pas ici.

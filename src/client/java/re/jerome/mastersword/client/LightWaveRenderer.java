@@ -57,7 +57,7 @@ public class LightWaveRenderer extends EntityRenderer<LightWaveEntity, LightWave
 	// The hitbox is 0.6 blocks but the quad spans 2.8, so culling on the hitbox
 	// makes the wave vanish while still visible at the edge of the screen.
 	@Override
-	protected AABB getBoundingBoxForCulling(LightWaveEntity entity) {
+	protected AABB getBoundingBoxForCulling(LightWaveEntity entity, float partialTick) {
 		return entity.getBoundingBox().inflate(SIZE);
 	}
 
@@ -65,11 +65,11 @@ public class LightWaveRenderer extends EntityRenderer<LightWaveEntity, LightWave
 	public void submit(
 			LightWaveRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
 		poseStack.pushPose();
-		poseStack.mulPose(Axis.YP.rotationDegrees(state.yRot - 90.0F));
-		poseStack.mulPose(Axis.ZP.rotationDegrees(state.xRot));
+		poseStack.rotateDegrees(Axis.YP, state.yRot - 90.0F);
+		poseStack.rotateDegrees(Axis.ZP, state.xRot);
 		// Lays the quad flat rather than upright: the crescent sweeps parallel to
 		// the ground, the way a sword swing does.
-		poseStack.mulPose(Axis.XP.rotationDegrees(90.0F));
+		poseStack.rotateDegrees(Axis.XP, 90.0F);
 
 		int light = state.lightCoords;
 		collector.submitCustomGeometry(poseStack, RENDER_TYPE, (pose, buffer) -> {

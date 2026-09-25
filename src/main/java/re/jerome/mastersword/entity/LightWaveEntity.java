@@ -92,14 +92,19 @@ public class LightWaveEntity extends Projectile {
 		float half = cfg.width() / 2.0F;
 		AABB sweep = new AABB(from, to).inflate(half);
 
-		// The nine-argument overload, not the short one: the short one ignores the
-		// box entirely for the actual hit test and falls back to computeMargin,
-		// which starts at 0 and never exceeds 0.3 -- the wave would be a line and
-		// the width setting would do nothing. Passing the margin explicitly is what
+		// The long overload, not the short one: the short one ignores the box
+		// entirely for the actual hit test and falls back to computeMargin, which
+		// starts at 0 and never exceeds 0.3 -- the wave would be a line and the
+		// width setting would do nothing. Passing the margin explicitly is what
 		// makes it a sweep, and the ClipContext argument adds a line-of-sight check
 		// so nothing is hit through a wall.
+		//
+		// 26.3 added a tenth argument: it only chooses which point the hit result
+		// carries, the clip on the entity's box or the block hit. We read nothing
+		// but getEntity(), so either value gives the same wave.
 		for (EntityHitResult hit : ProjectileUtil.getManyEntityHitResult(
-				level, this, from, to, sweep, this::canHitEntity, half, ClipContext.Block.COLLIDER, false)) {
+				level, this, from, to, sweep, this::canHitEntity, half, ClipContext.Block.COLLIDER,
+				false, false)) {
 			Entity target = hit.getEntity();
 			if (this.alreadyHit.add(target.getId())) {
 				this.hurt(level, target);

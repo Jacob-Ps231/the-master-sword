@@ -31,11 +31,13 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
@@ -242,7 +244,7 @@ public final class ShrineScan {
 		ChunkGenerator generator = cache.getGenerator();
 		return new Scan(
 				registries, generator, generator.getBiomeSource(), cache.randomState(),
-				server.getStructureManager(), level, state, placement,
+				server.getStructureTemplateManager(), level, state, placement,
 				set.structures().getFirst().structure(), radius);
 	}
 
@@ -272,6 +274,7 @@ public final class ShrineScan {
 		private final BiomeSource biomes;
 		private final RandomState randomState;
 		private final Climate.Sampler sampler;
+		private final BiomeResolver resolver;
 		private final StructureTemplateManager templates;
 		private final ServerLevel level;
 		private final ChunkGeneratorStructureState state;
@@ -289,7 +292,17 @@ public final class ShrineScan {
 			this.generator = generator;
 			this.biomes = biomes;
 			this.randomState = randomState;
-			this.sampler = randomState.sampler();
+			// 26.3: the climate sampler is built from the random state on demand, and
+			// biome lookups go through a resolver rather than through BiomeSource.
+			//
+			// EMPTY_UNCACHED is not a shortcut. The game builds its own sampler with
+			// caches on (ChunkGenerator.createStructures), and a cached context owns
+			// a mutable array of cells -- fine on the generation thread, not here:
+			// the scan runs on a pool thread so a long measurement cannot trip the
+			// watchdog. The cache only memoises, keyed on the position, so the
+			// values are the same either way; this one is merely slower.
+			this.sampler = randomState.createClimateSampler(SamplerContext.EMPTY_UNCACHED);
+			this.resolver = biomes.createResolver(this.sampler);
 			this.templates = templates;
 			this.level = level;
 			this.state = state;
@@ -353,7 +366,7 @@ public final class ShrineScan {
 		 */
 		private Candidate resolve(long seed, ChunkPos chunk) {
 			StructureStart start = structure.value().generate(
-					structure, Level.OVERWORLD, registries, generator, biomes, randomState, templates,
+					structure, Level.OVERWORLD, registries, generator, biomes, sampler, randomState, templates,
 					seed, chunk, 0, level, valid);
 
 			Optional<Structure.GenerationStub> stub = findPoint(seed, chunk, biome -> true);
@@ -374,12 +387,13 @@ public final class ShrineScan {
 		private Optional<Structure.GenerationStub> findPoint(
 				long seed, ChunkPos chunk, Predicate<Holder<Biome>> biomeTest) {
 			return structure.value().findValidGenerationPoint(new Structure.GenerationContext(
-					registries, generator, biomes, randomState, templates, seed, chunk, level, biomeTest));
+					registries, generator, biomes, sampler, randomState, templates, seed, chunk, level,
+					biomeTest));
 		}
 
 		private Holder<Biome> biomeAt(int x, int y, int z) {
-			return biomes.getNoiseBiome(
-					QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z), sampler);
+			return resolver.getNoiseBiome(
+					QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z));
 		}
 
 		private static String name(Holder<Biome> biome) {

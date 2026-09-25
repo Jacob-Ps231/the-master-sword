@@ -7,6 +7,7 @@ import net.minecraft.core.QuartPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
@@ -65,8 +66,13 @@ public final class ShrineStructure {
 	public static boolean footprintFits(
 			List<StructurePiece> pieces, BiomeSource biomes, Climate.Sampler sampler,
 			Predicate<Holder<Biome>> valid) {
+		// 26.3 moved the lookup off BiomeSource: a resolver is built from the
+		// sampler once, and answers by position alone. Built here rather than per
+		// piece -- there is only ever one piece, but the cost belongs outside the
+		// loop either way.
+		BiomeResolver resolver = biomes.createResolver(sampler);
 		for (StructurePiece piece : pieces) {
-			if (!fits(piece.getBoundingBox(), biomes, sampler, valid)) {
+			if (!fits(piece.getBoundingBox(), resolver, valid)) {
 				return false;
 			}
 		}
@@ -74,11 +80,11 @@ public final class ShrineStructure {
 	}
 
 	private static boolean fits(
-			BoundingBox box, BiomeSource biomes, Climate.Sampler sampler, Predicate<Holder<Biome>> valid) {
+			BoundingBox box, BiomeResolver biomes, Predicate<Holder<Biome>> valid) {
 		int quartY = QuartPos.fromBlock(box.minY());
 		for (int quartX = QuartPos.fromBlock(box.minX()); quartX <= QuartPos.fromBlock(box.maxX()); quartX++) {
 			for (int quartZ = QuartPos.fromBlock(box.minZ()); quartZ <= QuartPos.fromBlock(box.maxZ()); quartZ++) {
-				if (!valid.test(biomes.getNoiseBiome(quartX, quartY, quartZ, sampler))) {
+				if (!valid.test(biomes.getNoiseBiome(quartX, quartY, quartZ))) {
 					return false;
 				}
 			}

@@ -1,6 +1,5 @@
 package re.jerome.mastersword.block;
 
-import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -42,8 +41,6 @@ import re.jerome.mastersword.registry.ModCriteria;
 // #minecraft:swords and nothing else, so the pedestal never becomes a one-slot
 // chest while still being useful as decoration with an iron or diamond sword.
 public class PedestalBlock extends BaseEntityBlock {
-	public static final MapCodec<PedestalBlock> CODEC = simpleCodec(PedestalBlock::new);
-
 	// Borrowed from HorizontalDirectionalBlock rather than declared afresh: that
 	// class extends Block, so a BaseEntityBlock cannot inherit from it, but the
 	// property itself is public and shared by every vanilla facing block.
@@ -62,11 +59,6 @@ public class PedestalBlock extends BaseEntityBlock {
 	public PedestalBlock(Properties properties) {
 		super(properties);
 		this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.NORTH));
-	}
-
-	@Override
-	protected MapCodec<PedestalBlock> codec() {
-		return CODEC;
 	}
 
 	@Override

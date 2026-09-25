@@ -24,7 +24,7 @@ Aucune ligne de code n'a été écrite dans cette session.
 | **Production des `.nbt`** | `tools/structure/builder.js` | Fabric Data Generation API : **ne produit que du JSON**, aucun provider de template | le script reste. La datagen ne prendrait que les 4 JSON de worldgen |
 | **Exclusivité d'enchantements** (3 mixins) | `areCompatible` détourné aux 3 appelants | `EnchantmentEvents.ALLOW_ENCHANTING` prend bien un `ItemStack`… mais est branché sur `canEnchant` / `isPrimaryItem`, **pas** sur la compatibilité mutuelle | ne répond pas à la question posée. Les mixins restent |
 | **Durabilité pilotée par la config** | `ItemStackMixin` sur `getMaxDamage` / `isDamageableItem` | `DefaultItemComponentEvents.MODIFY` pose `MAX_DAMAGE` par item | perdrait `/mastersword reload` (les composants par défaut sont figés une fois) et ne couvre pas `isDamageableItem` |
-| **Vague de lumière** (2 mixins) | `Player.attack` + `ServerPlayer.swing` | `AttackEntityCallback`, `ServerLivingEntityEvents`… | aucun ne porte la **charge** d'attaque, aucun ne se déclenche sur un balayage à vide côté serveur |
+| **Vague de lumière** (2 mixins) | `Player.attack` + `ServerGamePacketListenerImpl.handlePunch` (26.3) | `AttackEntityCallback`, `ServerLivingEntityEvents`… | aucun ne porte la **charge** d'attaque, aucun ne se déclenche sur un balayage à vide côté serveur |
 | **Verrou anti-arbres** (2 mixins) | `TreeFeature` / `AbstractHugeMushroomFeature` / `FallenTreeFeature` à `HEAD` | `PlacementModifierType` custom + **écrasement** de `dark_forest_vegetation.json` | écraser un fichier vanilla (D&T et Trek écrivent déjà dans `data/minecraft/`), et ne couvrirait **que** cette feature |
 | **Config** | `Codec` + JSON maison | Cloth Config | un mod de plus, **et Mod Menu n'est pas installé** : l'écran serait inatteignable |
 | **Barre de durabilité fausse en multi** | rien (§6 le dit) | ForgeConfigAPIPort : il **synchronise** vraiment le fichier serveur → client | une dépendance dure pour ~40 lignes qu'on sait écrire avec `fabric-networking-api-v1` |
@@ -508,7 +508,7 @@ petits fichiers ? Non.
 | `EnchantCommandMixin` | `EnchantmentHelper.isEnchantmentCompatible` dans `/enchant` | **non** |
 | `ItemStackMixin` | `getMaxDamage` / `isDamageableItem` depuis la config | **à moitié** |
 | `PlayerAttackMixin` | lire `fullStrengthAttack` au moment du coup | **non** |
-| `ServerPlayerMixin` | le balayage à vide côté serveur | **non** |
+| `ServerPunchMixin` | le balayage à vide côté serveur | **non** |
 | `TreeFeatureMixin` + `FeaturePlacementMixins` | annuler un arbre selon la position | **non** |
 | `FogRendererMixin` | le brouillard | **non** (mais §1) |
 

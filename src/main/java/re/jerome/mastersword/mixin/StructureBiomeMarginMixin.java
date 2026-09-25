@@ -9,6 +9,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.structure.Structure;
@@ -61,7 +62,8 @@ public abstract class StructureBiomeMarginMixin {
 	@Inject(
 			method = "generate(Lnet/minecraft/core/Holder;Lnet/minecraft/resources/ResourceKey;"
 					+ "Lnet/minecraft/core/RegistryAccess;Lnet/minecraft/world/level/chunk/ChunkGenerator;"
-					+ "Lnet/minecraft/world/level/biome/BiomeSource;Lnet/minecraft/world/level/levelgen/RandomState;"
+					+ "Lnet/minecraft/world/level/biome/BiomeSource;Lnet/minecraft/world/level/biome/Climate$Sampler;"
+					+ "Lnet/minecraft/world/level/levelgen/RandomState;"
 					+ "Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager;J"
 					+ "Lnet/minecraft/world/level/ChunkPos;ILnet/minecraft/world/level/LevelHeightAccessor;"
 					+ "Ljava/util/function/Predicate;)"
@@ -70,7 +72,8 @@ public abstract class StructureBiomeMarginMixin {
 			cancellable = true)
 	private void mastersword$requireWholeFootprintInBiome(
 			Holder<Structure> structure, ResourceKey<Level> dimension, RegistryAccess registries,
-			ChunkGenerator generator, BiomeSource biomes, RandomState randomState,
+			ChunkGenerator generator, BiomeSource biomes, Climate.Sampler sampler,
+			RandomState randomState,
 			StructureTemplateManager templates, long seed, ChunkPos chunk, int references,
 			LevelHeightAccessor heights, Predicate<Holder<Biome>> validBiome,
 			CallbackInfoReturnable<StructureStart> cir) {
@@ -85,8 +88,10 @@ public abstract class StructureBiomeMarginMixin {
 			return; // vanilla already said no, for its own reasons
 		}
 
+		// 26.3 hands the climate sampler in as a parameter; in 26.2 it came out of
+		// the RandomState, which no longer exposes one.
 		if (!ShrineStructure.footprintFits(
-				start.getPieces(), biomes, randomState.sampler(), validBiome)) {
+				start.getPieces(), biomes, sampler, validBiome)) {
 			cir.setReturnValue(StructureStart.INVALID_START);
 		}
 	}

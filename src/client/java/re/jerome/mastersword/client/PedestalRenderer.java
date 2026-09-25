@@ -82,8 +82,8 @@ public class PedestalRenderer implements BlockEntityRenderer<PedestalBlockEntity
 		// positive turn about +Y carries south towards east. Unrotated, the blade
 		// already faces south, so facing=south lands on zero either way -- west is
 		// what settles the sign.
-		poseStack.mulPose(Axis.YP.rotationDegrees(-state.facingYRot));
-		poseStack.mulPose(Axis.ZP.rotationDegrees(BLADE_DOWN));
+		poseStack.rotateDegrees(Axis.YP, -state.facingYRot);
+		poseStack.rotateDegrees(Axis.ZP, BLADE_DOWN);
 
 		state.sword.submit(poseStack, collector, state.lightCoords, OverlayTexture.NO_OVERLAY, 0);
 

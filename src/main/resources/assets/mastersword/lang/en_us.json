@@ -1,7 +1,7 @@
 {
 	"item.mastersword.master_sword": "The Master Sword",
 	"block.mastersword.master_sword_pedestal": "Master Sword Pedestal",
-	"filled_map.mastersword.shrine": "Sacred Grove Map",
+	"item.mastersword.shrine_map": "Sacred Grove Map",
 	"commands.mastersword.reload.success": "The Master Sword config reloaded (durability: %s).",
 	"advancements.mastersword.drawn_from_the_stone.title": "Drawn from the Stone",
 	"advancements.mastersword.drawn_from_the_stone.description": "Pull the Master Sword from its pedestal, and let the fog lift for good."

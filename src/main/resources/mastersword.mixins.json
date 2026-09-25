@@ -10,7 +10,7 @@
 		"FeaturePlacementMixins$HugeMushroom",
 		"ItemStackMixin",
 		"PlayerAttackMixin",
-		"ServerPlayerMixin",
+		"ServerPunchMixin",
 		"StructureBiomeMarginMixin",
 		"TreeFeatureMixin"
 	],
